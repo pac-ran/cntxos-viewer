@@ -5,15 +5,15 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/cx-surface/:path*",
-        destination: "http://localhost:3000/api/cx-surface/:path*",
+        destination: "https://cntxos.com/api/cx-surface/:path*",
       },
       {
         source: "/api/cx-walk-stream/:path*",
-        destination: "http://localhost:3000/api/cx-walk-stream/:path*",
+        destination: "https://cntxos.com/api/cx-walk-stream/:path*",
       },
       {
         source: "/api/node-update",
-        destination: "http://localhost:3000/api/node-update",
+        destination: "https://cntxos.com/api/node-update",
       },
     ];
   },
