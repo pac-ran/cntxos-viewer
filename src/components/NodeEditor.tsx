@@ -395,7 +395,7 @@ export function NodeEditor({ slug }: { slug: string }) {
             <button
               key={i}
               onClick={() => dispatchAction(action)}
-              className="font-mono text-[9px] uppercase tracking-wide border border-rule/40 px-2 py-0.5 text-muted hover:text-ink hover:border-rule/70 transition-colors"
+              className="text-[10px] uppercase tracking-wide border border-rule/40 px-2 py-0.5 text-muted hover:text-ink hover:border-rule/70 transition-colors"
             >
               {action.name}
             </button>
@@ -460,7 +460,7 @@ export function NodeEditor({ slug }: { slug: string }) {
               )}
             </div>
             {tagsDirty && (
-              <span className="font-mono text-[9px] text-muted/50">saving tags…</span>
+              <span className="text-[10px] text-muted/60">saving tags…</span>
             )}
           </div>
         </div>
@@ -470,7 +470,7 @@ export function NodeEditor({ slug }: { slug: string }) {
           <button
             onClick={handleSave}
             disabled={!contentDirty || saving}
-            className={`font-mono text-[10px] px-3 py-1 border transition-colors ${
+            className={`text-[12px] px-3 py-1 border transition-colors ${
               contentDirty && !saving
                 ? "border-ink/60 text-ink hover:bg-ink hover:text-bg cursor-pointer"
                 : "border-rule/20 text-muted/40 cursor-default"
@@ -478,14 +478,14 @@ export function NodeEditor({ slug }: { slug: string }) {
           >
             {saving ? "saving…" : saveMsg === "saved" ? "saved ✓" : saveMsg === "error" ? "error" : "save"}
           </button>
-          <span className="font-mono text-[10px] text-muted/40">
+          <span className="text-[11px] text-muted/60">
             {contentDirty ? "unsaved changes" : ""}
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <span className="font-mono text-[9px] text-muted/40">{actor}</span>
+            <span className="text-[11px] text-muted/60">{actor}</span>
             <button
               onClick={() => setArchiveOpen(true)}
-              className="font-mono text-[10px] text-muted/60 hover:text-amber border border-rule/20 hover:border-amber/40 px-2 py-0.5 transition-colors"
+              className="text-[11px] text-muted/60 hover:text-amber border border-rule/20 hover:border-amber/40 px-2 py-0.5 transition-colors"
             >
               archive
             </button>
@@ -495,7 +495,7 @@ export function NodeEditor({ slug }: { slug: string }) {
         {/* Activity feed */}
         {events.length > 0 && (
           <div className="shrink-0 border-t border-rule/20 pt-2">
-            <div className="font-mono text-[9px] uppercase tracking-widest text-muted/60 mb-1.5">activity</div>
+            <div className="text-[10px] uppercase tracking-widest text-muted/60 mb-1.5">activity</div>
             <div className="flex flex-col gap-1">
               {events.map((ev, i) => (
                 <div key={i} className="flex items-baseline gap-2 font-mono text-[10px]">
@@ -516,12 +516,12 @@ export function NodeEditor({ slug }: { slug: string }) {
       {archiveOpen && (
         <div className="absolute inset-0 bg-bg/80 flex items-center justify-center z-10">
           <div className="bg-bg border border-rule/60 p-5 max-w-sm w-full mx-4 flex flex-col gap-4">
-            <p className="font-mono text-[11px] text-ink leading-relaxed">
+            <p className="text-[13px] text-ink leading-relaxed">
               Archive this node? It will no longer appear in scope walks. References to its slug will become broken.
             </p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setArchiveOpen(false)} className="font-mono text-[10px] border border-rule/40 px-3 py-1 text-muted hover:text-ink transition-colors">cancel</button>
-              <button onClick={handleArchive} disabled={archiving} className="font-mono text-[10px] border border-amber/60 px-3 py-1 text-amber hover:bg-amber hover:text-bg transition-colors">
+              <button onClick={() => setArchiveOpen(false)} className="text-[12px] border border-rule/40 px-3 py-1 text-muted hover:text-ink transition-colors">cancel</button>
+              <button onClick={handleArchive} disabled={archiving} className="text-[12px] border border-amber/60 px-3 py-1 text-amber hover:bg-amber hover:text-bg transition-colors">
                 {archiving ? "archiving…" : "archive"}
               </button>
             </div>
@@ -533,18 +533,18 @@ export function NodeEditor({ slug }: { slug: string }) {
       {noteModal && (
         <div className="absolute inset-0 bg-bg/80 flex items-center justify-center z-10">
           <div className="bg-bg border border-rule/60 p-5 max-w-sm w-full mx-4 flex flex-col gap-3">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted">{noteModal.label}</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">{noteModal.label}</div>
             <textarea
               autoFocus
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               rows={3}
-              className="resize-none font-mono text-[11px] text-ink bg-transparent border border-rule/40 focus:border-rule/70 outline-none p-2 leading-relaxed"
+              className="resize-none font-mono text-[12px] text-ink bg-transparent border border-rule/40 focus:border-rule/70 outline-none p-2 leading-relaxed"
               placeholder="note…"
             />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setNoteModal(null)} className="font-mono text-[10px] border border-rule/40 px-3 py-1 text-muted hover:text-ink transition-colors">cancel</button>
-              <button onClick={submitNoteModal} disabled={!noteText.trim()} className="font-mono text-[10px] border border-ink/60 px-3 py-1 text-ink hover:bg-ink hover:text-bg transition-colors disabled:opacity-30">post</button>
+              <button onClick={() => setNoteModal(null)} className="text-[12px] border border-rule/40 px-3 py-1 text-muted hover:text-ink transition-colors">cancel</button>
+              <button onClick={submitNoteModal} disabled={!noteText.trim()} className="text-[12px] border border-ink/60 px-3 py-1 text-ink hover:bg-ink hover:text-bg transition-colors disabled:opacity-30">post</button>
             </div>
           </div>
         </div>
@@ -552,7 +552,7 @@ export function NodeEditor({ slug }: { slug: string }) {
 
       {/* Toast */}
       {toast && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-ink text-bg font-mono text-[10px] px-3 py-1.5 z-20">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-ink text-bg text-[12px] px-3 py-1.5 z-20">
           {toast}
         </div>
       )}
