@@ -46,15 +46,21 @@ export async function GET(
     .eq("slug", `actions-for-${(node as { node_type: string }).node_type}`)
     .maybeSingle();
 
-  // Tags vocab
+  // Tags vocab — flatten tags arrays from a sample of nodes
   let tagsVocab: string[] = [];
-  const { data: vocabData } = await sb
+  const { data: tagRows } = await sb
     .schema("context_os")
-    .rpc("exec_render_query", {
-      p_sql: "SELECT DISTINCT unnest(tags) AS tag FROM context_os.nodes ORDER BY tag LIMIT 100",
-    });
-  if (Array.isArray(vocabData)) {
-    tagsVocab = (vocabData as { tag: string }[]).map((r) => r.tag);
+    .from("nodes")
+    .select("tags")
+    .not("tags", "is", null)
+    .limit(500);
+  if (Array.isArray(tagRows)) {
+    const seen = new Set<string>();
+    for (const row of tagRows as { tags: string[] | null }[]) {
+      for (const t of row.tags ?? []) seen.add(t);
+      if (seen.size >= 100) break;
+    }
+    tagsVocab = [...seen].sort();
   }
 
   return NextResponse.json({
