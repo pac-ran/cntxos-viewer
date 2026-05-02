@@ -21,36 +21,17 @@ export function WrapperPanel() {
   const [slots, setSlots] = useState<FrameSlot[] | null>(null);
   const [live, setLive] = useState(false);
 
-  const persistSlots = useCallback(async (newSlots: FrameSlot[]) => {
-    const sb = getBrowserSupabase();
-    await sb.rpc("set_frame_slot_state", { p_slots: newSlots });
-  }, []);
-
+  // Initial load via server-side API (service_role, bypasses RLS)
   useEffect(() => {
-    const sb = getBrowserSupabase();
-    sb.rpc("admin_node_detail", { p_slug: "conv-frame-state" }).then(({ data }) => {
-      type NodeDetail = {
-        node: { payload?: { slots?: FrameSlot[] } };
-        events: Array<{ event_kind: string; payload?: { slots?: FrameSlot[] } }>;
-      };
-      const detail = data as NodeDetail | null;
-
-      const payloadSlots = detail?.node?.payload?.slots;
-      if (Array.isArray(payloadSlots)) {
-        setSlots(payloadSlots);
-        return;
-      }
-
-      const latestFrameUpdate = detail?.events?.find(e => e.event_kind === "frame-update");
-      if (Array.isArray(latestFrameUpdate?.payload?.slots)) {
-        setSlots(latestFrameUpdate!.payload!.slots!);
-        return;
-      }
-
-      setSlots([]);
-    });
+    fetch("/api/frame-state")
+      .then(r => r.json())
+      .then(({ slots: s }: { slots: FrameSlot[] }) => {
+        setSlots(Array.isArray(s) ? s : []);
+      })
+      .catch(() => setSlots([]));
   }, []);
 
+  // Realtime subscription — anon key, conv-frame-state is public
   useEffect(() => {
     const sb = getBrowserSupabase();
     const ch = sb
@@ -63,13 +44,12 @@ export function WrapperPanel() {
           if ((payload.new as Record<string, unknown>)?.event_kind !== "frame-update") return;
           const newSlots = ((payload.new as Record<string, unknown>).payload as { slots?: FrameSlot[] })?.slots ?? [];
           setSlots(newSlots);
-          persistSlots(newSlots);
         }
       )
       .subscribe((s) => setLive(s === "SUBSCRIBED"));
 
     return () => { sb.removeChannel(ch); };
-  }, [persistSlots]);
+  }, []);
 
   const layout = deriveLayout(slots?.length ?? 0);
 
@@ -162,19 +142,14 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
   );
 
   const load = useCallback(async () => {
-    const sb = getBrowserSupabase();
     const [htmlText, payloadResult] = await Promise.all([
       fetch(`/api/cx-surface/${ref_}`, { cache: "no-store" })
         .then(r => (r.ok ? r.text() : ""))
         .catch(() => ""),
-      (async () => {
-        try {
-          const { data } = await sb.schema("context_os").from("nodes").select("payload").eq("slug", ref_).single();
-          return (data?.payload as Record<string, unknown>) ?? null;
-        } catch {
-          return null;
-        }
-      })(),
+      fetch(`/api/node/${ref_}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((d: { node?: { payload?: Record<string, unknown> } } | null) => d?.node?.payload ?? null)
+        .catch(() => null),
     ]);
     setHtml(htmlText);
     setNodePayload(payloadResult);

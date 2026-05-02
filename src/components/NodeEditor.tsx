@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { getBrowserSupabase } from "@/lib/supabase-browser";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -17,6 +16,7 @@ interface NodeRow {
   tags: string[];
   scope: string;
   payload: Record<string, unknown>;
+  visibility?: string;
 }
 
 interface ActivityEvent {
@@ -60,29 +60,23 @@ function parseActionManifest(content: string): ParsedAction[] {
 
 function evalAppliesWhen(condition: string, node: NodeRow): boolean {
   if (!condition || condition === "always") return true;
-  // Split compound AND conditions
   const parts = condition.split(/\bAND\b/).map(p => p.trim());
   return parts.every(part => evalSingleCondition(part, node));
 }
 
 function evalSingleCondition(cond: string, node: NodeRow): boolean {
-  // work_status = X (normalise in_progress → in-progress)
   const wsEq = cond.match(/work_status\s*=\s*(\S+)/);
   if (wsEq) return node.work_status === wsEq[1].replace("in_progress", "in-progress");
 
-  // status = X
   const stEq = cond.match(/^status\s*=\s*(\S+)/);
   if (stEq) return node.status === stEq[1];
 
-  // node_type = X
   const ntEq = cond.match(/node_type\s*=\s*(\S+)/);
   if (ntEq) return node.node_type === ntEq[1];
 
-  // payload.visibility != X
   const visNe = cond.match(/payload\.visibility\s*!=\s*(\S+)/);
   if (visNe) return (node.payload?.visibility as string | undefined) !== visNe[1];
 
-  // operator has authority — always show, backend gates
   if (cond.includes("operator has authority")) return true;
 
   return false;
@@ -91,24 +85,18 @@ function evalSingleCondition(cond: string, node: NodeRow): boolean {
 // ── Session actor lookup ───────────────────────────────────────────────────
 
 async function resolveActor(): Promise<string> {
-  // 1. URL param override
   if (typeof window !== "undefined") {
     const param = new URLSearchParams(window.location.search).get("actor");
     if (param) return param;
   }
-  // 2. session-randy node payload
   try {
-    const sb = getBrowserSupabase();
-    const { data } = await sb
-      .schema("context_os")
-      .from("nodes")
-      .select("payload")
-      .eq("slug", "session-randy")
-      .single();
-    const payload = data?.payload as { active?: boolean; agent_slug?: string } | null;
-    if (payload?.active && payload.agent_slug) {
-      // 'agent-randy' → 'randy'
-      return payload.agent_slug.replace(/^agent-/, "");
+    const res = await fetch("/api/node/session-randy");
+    if (res.ok) {
+      const { node } = await res.json() as { node: { payload?: { active?: boolean; agent_slug?: string } } | null };
+      const payload = node?.payload;
+      if (payload?.active && payload.agent_slug) {
+        return payload.agent_slug.replace(/^agent-/, "");
+      }
     }
   } catch {
     // fall through
@@ -147,56 +135,35 @@ export function NodeEditor({ slug }: { slug: string }) {
   const contentDirty = content !== savedContent;
   const tagsDirty = JSON.stringify([...tags].sort()) !== JSON.stringify([...savedTags].sort());
 
-  // Resolve session actor + prefetch tag vocabulary on mount
+  // Resolve session actor on mount
   useEffect(() => {
     resolveActor().then(setActor);
-    // Fetch all distinct tags once — no user input interpolated
-    const sb = getBrowserSupabase();
-    void sb.rpc("exec_render_query", {
-      p_sql: "SELECT DISTINCT unnest(tags) AS tag FROM context_os.nodes ORDER BY tag LIMIT 100",
-    }).then(({ data }) => {
-      if (Array.isArray(data)) {
-        setAllKnownTags((data as { tag: string }[]).map(r => r.tag));
-      }
-    });
   }, []);
 
-  // Load node + events + action manifest
+  // Load node + events + action manifest + tags vocab
   const load = useCallback(async () => {
-    const sb = getBrowserSupabase();
-    const { data, error } = await sb
-      .schema("context_os")
-      .from("nodes")
-      .select("id, slug, node_type, status, work_status, content, tags, scope, payload")
-      .eq("slug", slug)
-      .single();
-
-    if (error || !data) { setNotFound(true); return; }
-
-    const row = data as NodeRow;
+    const res = await fetch(`/api/node/${slug}`);
+    if (!res.ok) { setNotFound(true); return; }
+    const { node: row, events: evts, actionManifest, tagsVocab } = await res.json() as {
+      node: NodeRow | null;
+      events: ActivityEvent[];
+      actionManifest: string | null;
+      tagsVocab: string[];
+    };
+    if (!row) { setNotFound(true); return; }
     setNode(row);
     const c = row.content ?? "";
     setContent(c);
     setSavedContent(c);
     setTags(row.tags ?? []);
     setSavedTags(row.tags ?? []);
-
-    // Fetch action manifest for this node_type
-    const { data: manifestData } = await sb
-      .schema("context_os")
-      .from("nodes")
-      .select("content")
-      .eq("slug", `actions-for-${row.node_type}`)
-      .single();
-    if (manifestData?.content) {
-      setActions(parseActionManifest(manifestData.content as string));
+    setEvents(evts ?? []);
+    setAllKnownTags(tagsVocab ?? []);
+    if (actionManifest) {
+      setActions(parseActionManifest(actionManifest));
     } else {
       setActions([]);
     }
-
-    // Activity feed
-    const { data: actData } = await sb.rpc("node_activity", { p_node_slug: slug, p_limit: 5 });
-    if (Array.isArray(actData)) setEvents(actData as ActivityEvent[]);
   }, [slug]);
 
   useEffect(() => { load(); }, [load]);
@@ -224,14 +191,14 @@ export function NodeEditor({ slug }: { slug: string }) {
     if (!node || !contentDirty) return;
     setSaving(true);
     setSaveMsg(null);
-    const sb = getBrowserSupabase();
-    const { data } = await sb.rpc("crud_form_edit", {
-      p_actor: actor,
-      p_slug: slug,
-      p_content: content,
+    const res = await fetch("/api/node/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, content, actor }),
     });
+    const data = await res.json().catch(() => null) as { ok?: boolean } | null;
     setSaving(false);
-    if ((data as { ok?: boolean } | null)?.ok) {
+    if (data?.ok) {
       setSavedContent(content);
       setSaveMsg("saved");
       setTimeout(() => setSaveMsg(null), 2000);
@@ -247,13 +214,10 @@ export function NodeEditor({ slug }: { slug: string }) {
     if (!node || node.work_status === next) return;
     const prev = node.work_status;
     setNode(n => n ? { ...n, work_status: next } : n);
-    const sb = getBrowserSupabase();
-    await sb.rpc("admin_node_set_field", { p_slug: slug, p_field: "work_status", p_value: next });
-    await sb.rpc("post_event", {
-      p_actor: actor,
-      p_node_slug: slug,
-      p_event_kind: "work_status_changed",
-      p_payload: { from: prev, to: next },
+    await fetch("/api/node/work-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, value: next, actor, prev }),
     });
     load();
   }, [node, slug, actor, load]);
@@ -262,8 +226,11 @@ export function NodeEditor({ slug }: { slug: string }) {
 
   const handleArchive = useCallback(async () => {
     setArchiving(true);
-    const sb = getBrowserSupabase();
-    await sb.rpc("crud_form_archive", { p_actor: actor, p_slug: slug });
+    await fetch("/api/node/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, actor }),
+    });
     setArchiving(false);
     setArchiveOpen(false);
     load();
@@ -272,7 +239,6 @@ export function NodeEditor({ slug }: { slug: string }) {
   // ── Action manifest dispatch ─────────────────────────────────────────────
 
   const dispatchAction = useCallback(async (action: ParsedAction) => {
-    const sb = getBrowserSupabase();
     const oc = action.on_click;
 
     // work_status transition
@@ -301,11 +267,10 @@ export function NodeEditor({ slug }: { slug: string }) {
     const eventMatch = oc.match(/post (\S+) event/);
     if (eventMatch) {
       const kind = eventMatch[1].replace(/_/g, "-");
-      await sb.rpc("post_event", {
-        p_actor: actor,
-        p_node_slug: slug,
-        p_event_kind: kind,
-        p_payload: { triggered_by: "action-manifest", action: action.name },
+      await fetch("/api/node/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, actor, event_kind: kind, payload: { triggered_by: "action-manifest", action: action.name } }),
       });
       showToast(`${action.name} posted`);
       load();
@@ -314,11 +279,10 @@ export function NodeEditor({ slug }: { slug: string }) {
 
     // review-requested (special pattern in actions-for-document)
     if (oc.includes("review-requested")) {
-      await sb.rpc("post_event", {
-        p_actor: actor,
-        p_node_slug: slug,
-        p_event_kind: "note",
-        p_payload: { kind: "review-requested" },
+      await fetch("/api/node/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, actor, event_kind: "note", payload: { kind: "review-requested" } }),
       });
       showToast("Review requested");
       load();
@@ -326,8 +290,7 @@ export function NodeEditor({ slug }: { slug: string }) {
     }
 
     // admin_node_set_field for visibility
-    const fieldMatch = oc.match(/admin_node_set_field to update (\S+) in payload/);
-    if (fieldMatch) {
+    if (oc.match(/admin_node_set_field to update (\S+) in payload/)) {
       showToast("Visibility selector — coming in v2");
       return;
     }
@@ -337,12 +300,10 @@ export function NodeEditor({ slug }: { slug: string }) {
 
   const submitNoteModal = useCallback(async () => {
     if (!noteModal || !noteText.trim()) return;
-    const sb = getBrowserSupabase();
-    await sb.rpc("post_event", {
-      p_actor: actor,
-      p_node_slug: slug,
-      p_event_kind: noteModal.eventKind.replace(/_/g, "-"),
-      p_payload: { note: noteText.trim() },
+    await fetch("/api/node/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, actor, event_kind: noteModal.eventKind.replace(/_/g, "-"), payload: { note: noteText.trim() } }),
     });
     setNoteModal(null);
     setNoteText("");
@@ -353,11 +314,10 @@ export function NodeEditor({ slug }: { slug: string }) {
   // ── Tags ─────────────────────────────────────────────────────────────────
 
   const saveTags = useCallback(async (nextTags: string[]) => {
-    const sb = getBrowserSupabase();
-    await sb.rpc("crud_form_edit", {
-      p_actor: actor,
-      p_slug: slug,
-      p_tags: nextTags,
+    await fetch("/api/node/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, tags: nextTags, actor }),
     });
     setSavedTags(nextTags);
   }, [actor, slug]);
@@ -386,7 +346,6 @@ export function NodeEditor({ slug }: { slug: string }) {
   const handleTagInputChange = useCallback((val: string) => {
     setTagInput(val);
     if (!val.trim()) { setSuggestions([]); setShowSuggestions(false); return; }
-    // Filter from prefetched vocabulary — no user input in any SQL
     const q = val.trim().toLowerCase();
     const filtered = allKnownTags.filter(t => t.startsWith(q) && !tags.includes(t)).slice(0, 20);
     setSuggestions(filtered);
