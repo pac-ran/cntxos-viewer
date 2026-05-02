@@ -8,7 +8,7 @@ export async function GET(
   const { slug } = await params;
   const sb = getServerSupabase();
 
-  // Node
+  // Node first — 404 fast if missing
   const { data: node, error } = await sb
     .schema("context_os")
     .from("nodes")
@@ -20,43 +20,36 @@ export async function GET(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // Events — node_activity RPC, fallback to direct query
+  const nodeType = (node as { node_type: string }).node_type;
+  const nodeId = (node as { id: string }).id;
+
+  // Events, action manifest, tags vocab — all parallel
+  const [eventsResult, manifestResult, tagRowsResult] = await Promise.all([
+    sb.schema("context_os").rpc("node_activity", { p_node_slug: slug, p_limit: 5 }),
+    sb.schema("context_os").from("nodes").select("content").eq("slug", `actions-for-${nodeType}`).maybeSingle(),
+    sb.schema("context_os").from("nodes").select("tags").not("tags", "is", null).limit(500),
+  ]);
+
+  // Events — RPC fallback to direct query
   let events: unknown[] = [];
-  const { data: actData } = await sb
-    .schema("context_os")
-    .rpc("node_activity", { p_node_slug: slug, p_limit: 5 });
-  if (Array.isArray(actData)) {
-    events = actData;
+  if (Array.isArray(eventsResult.data)) {
+    events = eventsResult.data;
   } else {
     const { data: evDirect } = await sb
       .schema("context_os")
       .from("events")
       .select("event_kind,actor,occurred_at,outcome")
-      .eq("subject_node_id", (node as { id: string }).id)
+      .eq("subject_node_id", nodeId)
       .order("occurred_at", { ascending: false })
       .limit(5);
     events = evDirect ?? [];
   }
 
-  // Action manifest
-  const { data: manifestData } = await sb
-    .schema("context_os")
-    .from("nodes")
-    .select("content")
-    .eq("slug", `actions-for-${(node as { node_type: string }).node_type}`)
-    .maybeSingle();
-
-  // Tags vocab — flatten tags arrays from a sample of nodes
+  // Tags vocab
   let tagsVocab: string[] = [];
-  const { data: tagRows } = await sb
-    .schema("context_os")
-    .from("nodes")
-    .select("tags")
-    .not("tags", "is", null)
-    .limit(500);
-  if (Array.isArray(tagRows)) {
+  if (Array.isArray(tagRowsResult.data)) {
     const seen = new Set<string>();
-    for (const row of tagRows as { tags: string[] | null }[]) {
+    for (const row of tagRowsResult.data as { tags: string[] | null }[]) {
       for (const t of row.tags ?? []) seen.add(t);
       if (seen.size >= 100) break;
     }
@@ -66,7 +59,7 @@ export async function GET(
   return NextResponse.json({
     node,
     events,
-    actionManifest: (manifestData as { content?: string } | null)?.content ?? null,
+    actionManifest: (manifestResult.data as { content?: string } | null)?.content ?? null,
     tagsVocab,
   });
 }
