@@ -107,11 +107,11 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
 
         {/* Content */}
         {node.content ? (
-          <div className="font-mono text-[12px] text-ink leading-relaxed whitespace-pre-wrap break-words">
+          <div className="text-[14px] text-ink leading-[1.75] whitespace-pre-wrap break-words tracking-[0.01em]">
             {node.content}
           </div>
         ) : (
-          <div className="font-mono text-[11px] text-muted/40 italic">no content</div>
+          <div className="text-[13px] text-muted/60 italic">no content</div>
         )}
 
         {/* Tags */}
