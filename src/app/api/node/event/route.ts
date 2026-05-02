@@ -10,11 +10,10 @@ export async function POST(req: NextRequest) {
   };
   const sb = getServerSupabase();
   const { data, error } = await sb
-    .schema("context_os")
-    .rpc("post_event", {
+    .rpc("admin_post_event", {
       p_actor: actor,
-      p_node_slug: slug,
-      p_event_kind: event_kind,
+      p_slug: slug,
+      p_kind: event_kind,
       p_payload: payload,
     });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
