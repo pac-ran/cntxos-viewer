@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg: #F5F2E8;
+  --color-cream: #F5F2E8;
+  --color-ink: #1A1A1A;
+  --color-amber: #C2410C;
+  --color-accent: #C2410C;
+  --color-muted: #6B6558;
+  --color-rule: #B8B09C;
+  --font-mono: 'Courier New', monospace;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+}
