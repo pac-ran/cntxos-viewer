@@ -34,9 +34,63 @@ export async function GET(
     payload: Record<string, unknown>;
   };
 
-  const contentHtml = n.content
-    ? await marked.parse(n.content)
-    : "<p style='color:#aaa;font-style:italic'>no content</p>";
+  // Dynamic contacts query — surface with payload.query_contacts: true
+  let contentHtml: string;
+  if (n.payload?.query_contacts === true) {
+    const { data: contacts } = await sb
+      .schema("context_os")
+      .from("nodes")
+      .select("slug,content,payload,tags,created_at")
+      .contains("tags", ["contact"])
+      .eq("node_type", "entity")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (!contacts || contacts.length === 0) {
+      contentHtml = "<p style='color:#aaa;font-style:italic'>No contacts yet. POST to /api/contact-ingress to add one.</p>";
+    } else {
+      const rows = (contacts as {
+        slug: string;
+        content: string | null;
+        payload: Record<string, unknown>;
+        tags: string[] | null;
+        created_at: string;
+      }[]).map(c => {
+        const p = c.payload ?? {};
+        const name = String(p.name ?? c.slug);
+        const company = String(p.company ?? "—");
+        const email = String(p.email ?? "—");
+        const source = String(p.source ?? "—");
+        const tags = (c.tags ?? []).filter(t => !["contact","demo"].includes(t)).join(", ") || "—";
+        return `<tr>
+          <td><a href="/${c.slug}" style="color:#0098fd;text-decoration:none;font-family:monospace">${name}</a></td>
+          <td>${company}</td>
+          <td style="font-size:11px">${email}</td>
+          <td><span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 5px;color:#d8d8dc">${source}</span></td>
+          <td style="font-size:11px;color:#888">${tags}</td>
+        </tr>`;
+      }).join("\n");
+
+      contentHtml = `
+        <div style="margin-bottom:12px;font-size:12px;color:#888">${contacts.length} contact${contacts.length === 1 ? "" : "s"}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="border-bottom:1px solid #3a3a3a">
+              <th style="text-align:left;padding:.35em .7em;font-size:11px;color:#888;font-weight:500">NAME</th>
+              <th style="text-align:left;padding:.35em .7em;font-size:11px;color:#888;font-weight:500">COMPANY</th>
+              <th style="text-align:left;padding:.35em .7em;font-size:11px;color:#888;font-weight:500">EMAIL</th>
+              <th style="text-align:left;padding:.35em .7em;font-size:11px;color:#888;font-weight:500">SOURCE</th>
+              <th style="text-align:left;padding:.35em .7em;font-size:11px;color:#888;font-weight:500">TAGS</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+  } else {
+    contentHtml = n.content
+      ? await marked.parse(n.content)
+      : "<p style='color:#aaa;font-style:italic'>no content</p>";
+  }
 
   const tags = (n.tags ?? [])
     .map(t => `<span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 6px;color:#d8d8dc">${t}</span>`)
