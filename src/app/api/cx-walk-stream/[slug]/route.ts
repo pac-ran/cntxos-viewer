@@ -20,24 +20,36 @@ export async function GET(
 <meta charset="utf-8">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1a1a1a; color: #d8d8dc; font-family: system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.5; padding: 14px 18px; height: 100vh; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
-  .header { display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; }
-  .title { font-family: monospace; font-size: 13px; font-weight: 700; color: #fff; }
-  .meta { font-family: monospace; font-size: 9px; color: #aaaaaa; }
-  #progress { font-family: monospace; font-size: 10px; color: #aaaaaa; flex-shrink: 0; }
-  #nodes { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-  .node-row { display: flex; align-items: baseline; gap: 6px; }
-  .node-slug { font-family: monospace; font-size: 11px; color: #d8d8dc; }
-  .node-type { font-family: monospace; font-size: 9px; border: 1px solid #3a3a3a; padding: 0 4px; color: #aaaaaa; text-transform: uppercase; }
-  .node-new { animation: fadein 0.3s ease; }
-  .depth-label { font-family: monospace; font-size: 9px; color: #555; text-transform: uppercase; margin-top: 8px; margin-bottom: 2px; }
-  @keyframes fadein { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+  body { background: #1a1a1a; color: #d8d8dc; font-family: system-ui, -apple-system, sans-serif; padding: 20px 24px; height: 100vh; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
+  .header { flex-shrink: 0; }
+  .title { font-family: monospace; font-size: 16px; font-weight: 700; color: #fff; }
+  .meta { font-family: monospace; font-size: 10px; color: #555; margin-top: 3px; }
+  #progress { font-family: monospace; font-size: 11px; color: #aaaaaa; flex-shrink: 0; min-height: 16px; }
+  #progress.done { color: #4ade80; }
+  #nodes { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .depth-sep { font-family: monospace; font-size: 10px; color: #3a3a3a; text-transform: uppercase; letter-spacing: .1em; padding: 12px 0 6px; border-top: 1px solid #2a2a2a; margin-top: 4px; }
+  .depth-sep:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+  .node-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .node-row.new { animation: slide-in .25s ease; }
+  .node-slug { font-family: monospace; font-size: 14px; color: #fff; }
+  .node-type { font-family: monospace; font-size: 9px; padding: 1px 5px; text-transform: uppercase; letter-spacing: .05em; border: 1px solid; flex-shrink: 0; }
+  .t-mission    { color: #60a5fa; border-color: #1d4ed8; }
+  .t-principle  { color: #a78bfa; border-color: #5b21b6; }
+  .t-practice   { color: #4ade80; border-color: #166534; }
+  .t-policy     { color: #fbbf24; border-color: #92400e; }
+  .t-task       { color: #f87171; border-color: #991b1b; }
+  .t-document   { color: #d8d8dc; border-color: #3a3a3a; }
+  .t-pattern    { color: #f0abfc; border-color: #701a75; }
+  .t-glimmer    { color: #67e8f9; border-color: #0e7490; }
+  .t-finding    { color: #fb923c; border-color: #7c2d12; }
+  .t-other      { color: #aaaaaa; border-color: #3a3a3a; }
+  @keyframes slide-in { from { opacity:0; transform:translateX(-6px); } to { opacity:1; transform:none; } }
 </style>
 </head>
 <body>
 <div class="header">
-  <span class="title">${slug}</span>
-  <span class="meta">${relationType} · ${direction} · depth ${maxDepth}</span>
+  <div class="title">${slug}</div>
+  <div class="meta">${relationType} · ${direction} · depth ${maxDepth}</div>
 </div>
 <div id="progress">connecting…</div>
 <div id="nodes"></div>
@@ -46,12 +58,19 @@ const eventsUrl = ${JSON.stringify(eventsUrl)};
 const nodesEl = document.getElementById('nodes');
 const progressEl = document.getElementById('progress');
 
+const TYPE_CLASS = {
+  mission:'t-mission', principle:'t-principle', practice:'t-practice',
+  policy:'t-policy', task:'t-task', document:'t-document',
+  pattern:'t-pattern', glimmer:'t-glimmer', finding:'t-finding',
+};
+
 const es = new EventSource(eventsUrl);
 
 es.onmessage = function(e) {
   const msg = JSON.parse(e.data);
   if (msg.done) {
     progressEl.textContent = 'complete — ' + msg.total_nodes + ' nodes';
+    progressEl.className = 'done';
     es.close();
     return;
   }
@@ -62,16 +81,20 @@ es.onmessage = function(e) {
   }
   progressEl.textContent = 'depth ' + msg.depth + ' — ' + msg.total_nodes + ' nodes…';
   if (msg.new_nodes && msg.new_nodes.length > 0) {
-    const label = document.createElement('div');
-    label.className = 'depth-label';
-    label.textContent = 'depth ' + msg.depth;
-    nodesEl.appendChild(label);
-    for (const n of msg.new_nodes) {
+    const sep = document.createElement('div');
+    sep.className = 'depth-sep';
+    sep.textContent = 'depth ' + msg.depth + ' · ' + msg.new_nodes.length + ' nodes';
+    nodesEl.appendChild(sep);
+    msg.new_nodes.forEach(function(n, i) {
       const row = document.createElement('div');
-      row.className = 'node-row node-new';
-      row.innerHTML = '<span class="node-slug">' + escHtml(n.slug) + '</span><span class="node-type">' + escHtml(n.node_type) + '</span>';
+      row.className = 'node-row new';
+      row.style.animationDelay = (i * 20) + 'ms';
+      const tc = TYPE_CLASS[n.node_type] || 't-other';
+      row.innerHTML = '<span class="node-slug">' + escHtml(n.slug) + '</span>'
+        + '<span class="node-type ' + tc + '">' + escHtml(n.node_type) + '</span>';
       nodesEl.appendChild(row);
-    }
+    });
+    nodesEl.scrollTop = nodesEl.scrollHeight;
   }
 };
 
