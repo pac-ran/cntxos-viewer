@@ -143,7 +143,7 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
 
   const load = useCallback(async () => {
     const [htmlText, payloadResult] = await Promise.all([
-      fetch(`/api/cx-surface/${ref_}`, { cache: "no-store" })
+      fetch(`/api/cx-surface/${ref_}?f=1`, { cache: "no-store" })
         .then(r => (r.ok ? r.text() : ""))
         .catch(() => ""),
       fetch(`/api/node/${ref_}`)
