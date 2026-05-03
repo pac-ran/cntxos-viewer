@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, use } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { WrapperPanel } from "@/components/WrapperPanel";
 import { NodeEditor } from "@/components/NodeEditor";
 import { NodeViewer } from "@/components/NodeViewer";
 
@@ -59,12 +58,9 @@ export default function NodePage({ params }: Props) {
   }, [router]);
 
   return (
-    <div className="flex h-full">
-      {/* Left pane — 40% */}
-      <div className="relative w-[40%] h-full border-r border-rule/30 flex flex-col overflow-hidden">
-
-        {/* Pane header with search */}
-        <div className="shrink-0 px-4 py-2 border-b border-rule/30 flex items-center gap-2">
+    <>
+      {/* Pane header with search */}
+      <div className="shrink-0 px-4 py-2 border-b border-rule/30 flex items-center gap-2">
           <button
             onClick={() => router.push("/")}
             className="shrink-0 text-[10px] text-dim hover:text-accent transition-colors font-mono"
@@ -127,16 +123,10 @@ export default function NodePage({ params }: Props) {
           )}
         </div>
 
-        {mode === "view"
-          ? <NodeViewer slug={slug} onEdit={() => setMode("edit")} />
-          : <NodeEditor slug={slug} />
-        }
-      </div>
-
-      {/* Right pane — 60% — AI viewer */}
-      <div className="w-[60%] h-full">
-        <WrapperPanel />
-      </div>
-    </div>
+      {mode === "view"
+        ? <NodeViewer slug={slug} onEdit={() => setMode("edit")} />
+        : <NodeEditor slug={slug} />
+      }
+    </>
   );
 }
