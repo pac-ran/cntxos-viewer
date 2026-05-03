@@ -4,8 +4,6 @@ import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ConnectPanel } from "@/components/ConnectPanel";
 
-type Mode = "watch" | "edit";
-
 interface SearchResult {
   slug: string;
   node_type: string;
@@ -14,16 +12,11 @@ interface SearchResult {
   content: string | null;
 }
 
-const MODES: { id: Mode; label: string; desc: string }[] = [
-  { id: "watch", label: "Watch", desc: "Follow along. Read-only view of any node." },
-  { id: "edit",  label: "Edit",  desc: "Full editor. Create and update nodes." },
-];
-
 const DEFAULT_NODE = "m-box-render-build";
 
 export default function LandingPage() {
   const router = useRouter();
-  const [selectedMode, setSelectedMode] = useState<Mode | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -46,17 +39,9 @@ export default function LandingPage() {
     debounceRef.current = setTimeout(() => runSearch(val), 250);
   }, [runSearch]);
 
-  const go = useCallback((slug: string, mode: Mode) => {
-    const url = mode === "edit" ? `/${slug}?mode=edit` : `/${slug}`;
-    router.push(url);
+  const goEdit = useCallback((slug: string) => {
+    router.push(`/${slug}?mode=edit`);
   }, [router]);
-
-  const handleSelectMode = (mode: Mode) => {
-    setSelectedMode(mode);
-    setQuery("");
-    setResults([]);
-    setShowResults(false);
-  };
 
   return (
     <div className="flex h-full">
@@ -71,40 +56,36 @@ export default function LandingPage() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-7 flex flex-col gap-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-7 flex flex-col gap-4">
 
           <p className="text-[12px] text-muted">What are you here to do?</p>
 
-          {/* Mode cards */}
-          <div className="flex flex-col gap-2">
-            {MODES.map(m => (
-              <button
-                key={m.id}
-                onClick={() => handleSelectMode(m.id)}
-                className={`text-left border px-4 py-3 transition-colors ${
-                  selectedMode === m.id
-                    ? "border-ink/60 bg-rule/10"
-                    : "border-rule/30 hover:border-rule/60"
-                }`}
-              >
-                <div className="text-[13px] font-semibold text-ink mb-0.5">{m.label}</div>
-                <div className="text-[11px] text-muted">{m.desc}</div>
-              </button>
-            ))}
-
-            {/* Manage — coming soon */}
-            <div className="text-left border border-rule/20 px-4 py-3 opacity-40 cursor-default">
-              <div className="text-[13px] font-semibold text-muted mb-0.5">Manage</div>
-              <div className="text-[11px] text-dim">Project queue. Work status and tasks. — coming soon</div>
+          {/* Watch — one click, opens viewer immediately */}
+          <button
+            onClick={() => router.push(`/${DEFAULT_NODE}`)}
+            className="text-left border border-rule/30 hover:border-accent hover:bg-accent/5 px-4 py-4 transition-colors group"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[14px] font-semibold text-ink">Watch</span>
+              <span className="text-[11px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">open →</span>
             </div>
-          </div>
+            <div className="text-[11px] text-muted">Follow along. Read-only view, no changes.</div>
+          </button>
 
-          {/* Node picker — appears after mode selection */}
-          {selectedMode && (
-            <div className="flex flex-col gap-3 pt-2 border-t border-rule/20">
-              <span className="text-[10px] uppercase tracking-widest text-dim">pick a node</span>
+          {/* Edit — opens search picker */}
+          <button
+            onClick={() => { setEditOpen(true); setQuery(""); setResults([]); setShowResults(false); }}
+            className={`text-left border px-4 py-4 transition-colors ${
+              editOpen ? "border-accent bg-accent/5" : "border-rule/30 hover:border-accent hover:bg-accent/5"
+            }`}
+          >
+            <div className="text-[14px] font-semibold text-ink mb-1">Edit</div>
+            <div className="text-[11px] text-muted">Full editor. Create and update nodes.</div>
+          </button>
 
-              {/* Search */}
+          {/* Edit node picker */}
+          {editOpen && (
+            <div className="flex flex-col gap-2.5 pl-1">
               <div className="relative">
                 <input
                   type="text"
@@ -114,14 +95,14 @@ export default function LandingPage() {
                   onBlur={() => setTimeout(() => setShowResults(false), 150)}
                   onKeyDown={e => {
                     if (e.key === "Enter") {
-                      if (results.length > 0) go(results[0].slug, selectedMode);
-                      else if (!query.trim()) go(DEFAULT_NODE, selectedMode);
+                      if (results.length > 0) goEdit(results[0].slug);
+                      else if (!query.trim()) goEdit(DEFAULT_NODE);
                     }
-                    if (e.key === "Escape") { setQuery(""); setShowResults(false); }
+                    if (e.key === "Escape") { setEditOpen(false); }
                   }}
                   autoFocus
                   placeholder="search nodes…"
-                  className="w-full bg-transparent border border-rule/30 focus:border-rule/60 outline-none px-2.5 py-1.5 text-[12px] text-ink placeholder:text-dim transition-colors"
+                  className="w-full bg-transparent border border-rule/40 focus:border-accent outline-none px-2.5 py-1.5 text-[12px] text-ink placeholder:text-dim transition-colors"
                 />
                 {searching && (
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-dim">…</span>
@@ -131,7 +112,7 @@ export default function LandingPage() {
                     {results.map(r => (
                       <button
                         key={r.slug}
-                        onMouseDown={() => go(r.slug, selectedMode)}
+                        onMouseDown={() => goEdit(r.slug)}
                         className="w-full text-left px-3 py-2 hover:bg-rule/20 transition-colors border-b border-rule/20 last:border-0"
                       >
                         <div className="flex items-center gap-2">
@@ -146,16 +127,20 @@ export default function LandingPage() {
                   </div>
                 )}
               </div>
-
-              {/* Quick open default */}
               <button
-                onClick={() => go(DEFAULT_NODE, selectedMode)}
+                onClick={() => goEdit(DEFAULT_NODE)}
                 className="text-left text-[11px] text-dim hover:text-muted transition-colors"
               >
-                or open <span className="font-mono">{DEFAULT_NODE}</span> →
+                or open <span className="font-mono text-accent">{DEFAULT_NODE}</span> →
               </button>
             </div>
           )}
+
+          {/* Manage — coming soon */}
+          <div className="border border-rule/15 px-4 py-4 opacity-35 cursor-default">
+            <div className="text-[14px] font-semibold text-muted mb-1">Manage</div>
+            <div className="text-[11px] text-dim">Project queue, work status, tasks — coming soon</div>
+          </div>
 
         </div>
       </div>

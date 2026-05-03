@@ -65,8 +65,15 @@ export default function NodePage({ params }: Props) {
 
         {/* Pane header with search */}
         <div className="shrink-0 px-4 py-2 border-b border-rule/30 flex items-center gap-2">
+          <button
+            onClick={() => router.push("/")}
+            className="shrink-0 text-[10px] text-dim hover:text-accent transition-colors font-mono"
+            title="session home"
+          >
+            ←
+          </button>
           <span className="text-[10px] font-semibold uppercase tracking-widest text-dim shrink-0">
-            {mode === "view" ? "Node" : "Edit"}
+            {mode === "view" ? "view" : "edit"}
           </span>
 
           {/* Search box */}

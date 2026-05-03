@@ -80,9 +80,9 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
           </span>
           <button
             onClick={onEdit}
-            className="ml-auto text-[11px] border border-rule/40 px-2.5 py-0.5 text-muted hover:text-ink hover:border-rule/70 transition-colors"
+            className="ml-auto text-[11px] border border-accent/60 px-2.5 py-0.5 text-accent hover:bg-accent hover:text-bg transition-colors"
           >
-            edit
+            edit →
           </button>
         </div>
         <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
