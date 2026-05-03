@@ -499,14 +499,24 @@ export function NodeEditor({ slug }: { slug: string }) {
           </span>
           <div className="ml-auto flex items-center gap-2">
             <span className="text-[11px] text-dim">{actor}</span>
-            {node.status === "draft" && (actor === "randy" || actor === "dl") && (
-              <button
-                onClick={handlePromoteToCanon}
-                disabled={promoting}
-                className="text-[11px] border border-green-600/50 text-green-400 hover:bg-green-600/20 px-2 py-0.5 transition-colors disabled:opacity-40"
-              >
-                {promoting ? "promoting…" : "→ canon"}
-              </button>
+            {node.status === "draft" && (
+              (actor === "randy" || actor === "dl") ? (
+                <button
+                  onClick={handlePromoteToCanon}
+                  disabled={promoting}
+                  className="text-[11px] border border-green-600/50 text-green-400 hover:bg-green-600/20 px-2 py-0.5 transition-colors disabled:opacity-40"
+                >
+                  {promoting ? "promoting…" : "→ canon"}
+                </button>
+              ) : (
+                <button
+                  disabled
+                  title="Requires DL review"
+                  className="text-[11px] border border-rule/20 text-dim px-2 py-0.5 cursor-default opacity-40"
+                >
+                  → canon
+                </button>
+              )
             )}
             {(node.work_status === "done" || node.status === "canon") && (
               <button
@@ -538,8 +548,8 @@ export function NodeEditor({ slug }: { slug: string }) {
           </div>
         )}
 
-        {/* Payload collapsible */}
-        {node.payload && Object.keys(node.payload).length > 0 && (
+        {/* Payload collapsible — only for node types where payload is meaningful */}
+        {["surface", "walk_formula", "pattern", "session"].includes(node.node_type) && node.payload && Object.keys(node.payload).length > 0 && (
           <div className="shrink-0 border-t border-rule/20 pt-2">
             <button
               onClick={() => setPayloadOpen(p => !p)}
@@ -562,7 +572,7 @@ export function NodeEditor({ slug }: { slug: string }) {
         <div className="absolute inset-0 bg-bg/80 flex items-center justify-center z-10">
           <div className="bg-bg border border-rule/60 p-5 max-w-sm w-full mx-4 flex flex-col gap-4">
             <p className="text-[13px] text-ink leading-relaxed">
-              Archive this node? It will no longer appear in scope walks. References to its slug will become broken.
+              Archive <span className="font-mono">{slug}</span>? This cannot be undone from the editor.
             </p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setArchiveOpen(false)} className="text-[12px] border border-rule/40 px-3 py-1 text-muted hover:text-ink transition-colors">cancel</button>
@@ -628,21 +638,23 @@ function HeaderStrip({
         </span>
       </div>
       <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
-      <div className="flex gap-px">
-        {WORK_STATUS_PILLS.map(ws => (
-          <button
-            key={ws}
-            onClick={() => onWorkStatus(ws)}
-            className={`font-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border transition-colors ${
-              node.work_status === ws
-                ? "bg-ink text-bg border-ink"
-                : "border-rule/30 text-muted hover:border-rule/60 hover:text-ink"
-            }`}
-          >
-            {STATUS_LABELS[ws]}
-          </button>
-        ))}
-      </div>
+      {node.node_type === "task" && (
+        <div className="flex gap-px">
+          {WORK_STATUS_PILLS.map(ws => (
+            <button
+              key={ws}
+              onClick={() => onWorkStatus(ws)}
+              className={`font-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border transition-colors ${
+                node.work_status === ws
+                  ? "bg-ink text-bg border-ink"
+                  : "border-rule/30 text-muted hover:border-rule/60 hover:text-ink"
+              }`}
+            >
+              {STATUS_LABELS[ws]}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
