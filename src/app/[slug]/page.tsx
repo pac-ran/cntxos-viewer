@@ -71,6 +71,13 @@ export default function NodePage({ params }: Props) {
           <span className="text-[10px] font-semibold uppercase tracking-widest text-dim shrink-0">
             {mode === "view" ? "view" : "edit"}
           </span>
+          <a
+            href="/contact-ingress"
+            className="shrink-0 text-[10px] font-mono text-dim hover:text-accent transition-colors border border-rule/30 hover:border-rule/60 px-1.5 py-0.5"
+            title="Add contact"
+          >
+            + contact
+          </a>
 
           {/* Search box */}
           <div ref={searchRef} className="relative flex-1">

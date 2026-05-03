@@ -136,6 +136,18 @@ export default function LandingPage() {
             </div>
           )}
 
+          {/* Contacts */}
+          <button
+            onClick={() => router.push("/contact-ingress")}
+            className="text-left border border-rule/30 hover:border-accent hover:bg-accent/5 px-4 py-4 transition-colors group"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[14px] font-semibold text-ink">Add contact</span>
+              <span className="text-[11px] text-accent opacity-0 group-hover:opacity-100 transition-opacity">open →</span>
+            </div>
+            <div className="text-[11px] text-muted">Ingest a new contact into the substrate.</div>
+          </button>
+
           {/* Manage — coming soon */}
           <div className="border border-rule/15 px-4 py-4 opacity-35 cursor-default">
             <div className="text-[14px] font-semibold text-muted mb-1">Manage</div>

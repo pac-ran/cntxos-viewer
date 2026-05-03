@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const SOURCES = ["manual", "etsy", "form", "import"] as const;
 
@@ -44,8 +45,25 @@ export default function ContactIngressPage() {
     }
   }
 
+  const router = useRouter();
+
   return (
-    <div className="p-6 max-w-lg">
+    <div className="flex flex-col h-full">
+      {/* Nav header — matches slug page style */}
+      <div className="shrink-0 px-4 py-2 border-b border-rule/30 flex items-center gap-2">
+        <button
+          onClick={() => router.back()}
+          className="shrink-0 text-[10px] text-dim hover:text-accent transition-colors font-mono"
+          title="back"
+        >
+          ←
+        </button>
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-dim">
+          add contact
+        </span>
+      </div>
+
+    <div className="flex-1 overflow-auto p-6 max-w-lg">
       <div className="text-[11px] font-mono text-dim mb-1">wf-contact-ingress</div>
       <h1 className="text-[15px] font-semibold text-primary mb-5">Add contact</h1>
 
@@ -125,6 +143,7 @@ export default function ContactIngressPage() {
         <div>Raw contact → ingress → substrate → viewer live update</div>
         <div className="font-mono text-dim/60">POST /api/contact-ingress</div>
       </div>
+    </div>
     </div>
   );
 }
