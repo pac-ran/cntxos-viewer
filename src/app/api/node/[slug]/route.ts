@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 
+const R2_PUBLIC_URL =
+  process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "https://media.pacificstyle.net";
+
+function resolveR2Urls(content: string | null): string | null {
+  if (!content) return content;
+  return content.replace(/r2:\/\/psos-assets\//g, `${R2_PUBLIC_URL}/`);
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -56,8 +64,13 @@ export async function GET(
     tagsVocab = [...seen].sort();
   }
 
+  const resolvedNode = {
+    ...node,
+    content: resolveR2Urls((node as { content: string | null }).content),
+  };
+
   return NextResponse.json({
-    node,
+    node: resolvedNode,
     events,
     actionManifest: (manifestResult.data as { content?: string } | null)?.content ?? null,
     tagsVocab,
