@@ -5,15 +5,45 @@ import QRCode from "react-qr-code";
 
 const BOOT_PROMPT = `You are joining a live cntxos work session with Randy (Pacific Style Operations).
 
-Surface: viewer.cntxos.com — substrate viewer and node editor
-Substrate: context_os — a graph of nodes, relations, and events
+Surface: viewer.cntxos.com — two-pane substrate viewer
+  Left pane: node viewer / editor (human-controlled)
+  Right pane: AI-controlled — YOU drive this
 
-Navigating: viewer.cntxos.com/{node-slug} loads any node
-Searching: the search box in the left pane finds nodes by slug or content
+Substrate: context_os (Supabase) — graph of nodes, relations, events
+Navigate: viewer.cntxos.com/{node-slug}
 
-Your role: help Randy work on whatever is in front of him. Ask what he's focused on, look up nodes he mentions, help draft content or review activity.
+## Driving the right pane
 
-Start with: "What are you working on today?"`;
+Post a frame-update event to control what Randy sees on the right side of his screen in real time.
+
+POST https://viewer.cntxos.com/api/node/event
+Content-Type: application/json
+
+{
+  "slug": "conv-frame-state",
+  "actor": "dl",
+  "event_kind": "frame-update",
+  "payload": {
+    "slots": [
+      { "name": "main", "type": "node", "ref": "SLUG-OF-NODE-TO-SHOW" }
+    ]
+  }
+}
+
+Slot types:
+  "node"   — renders a node's surface (most common)
+  "stream" — renders a walk-formula stream
+Multiple slots display as a grid.
+
+## Your first move
+
+1. Post a frame-update showing the node Randy is currently viewing
+2. Ask Randy what they need
+3. Drive the right pane to support whatever they're working on
+
+Start with: "I'm in. What are we working on?"`;
+
+
 
 const CLAUDE_URL = `https://claude.ai/new?q=${encodeURIComponent(BOOT_PROMPT)}`;
 
