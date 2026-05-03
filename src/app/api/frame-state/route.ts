@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 
 export async function GET() {
@@ -31,4 +31,20 @@ export async function GET() {
 
   const slots = (events?.[0]?.payload as { slots?: unknown[] } | null)?.slots ?? [];
   return NextResponse.json({ slots });
+}
+
+export async function PATCH(req: NextRequest) {
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+  const left_slug = typeof body.left_slug === "string" ? body.left_slug : null;
+  if (!left_slug) return NextResponse.json({ error: "left_slug required" }, { status: 400 });
+
+  const sb = getServerSupabase();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (sb.schema("context_os") as any).rpc("admin_node_set_payload", {
+    p_slug: "conv-frame-state",
+    p_payload_patch: { left_slug },
+  });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, result: data });
 }

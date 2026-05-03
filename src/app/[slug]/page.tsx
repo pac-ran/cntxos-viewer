@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, use } from "react";
+import { useState, useCallback, useRef, useEffect, use } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { NodeEditor } from "@/components/NodeEditor";
 import { NodeViewer } from "@/components/NodeViewer";
@@ -24,6 +24,15 @@ export default function NodePage({ params }: Props) {
   const [mode, setMode] = useState<"view" | "edit">(
     searchParams.get("mode") === "edit" ? "edit" : "view"
   );
+
+  // Write left_slug to frame-state so DL knows what Randy is viewing
+  useEffect(() => {
+    fetch("/api/frame-state", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ left_slug: slug }),
+    }).catch(() => {/* non-critical */});
+  }, [slug]);
 
   // Search state
   const [query, setQuery] = useState("");
