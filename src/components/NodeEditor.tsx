@@ -122,6 +122,8 @@ export function NodeEditor({ slug }: { slug: string }) {
   const [toast, setToast] = useState<string | null>(null);
   const [noteModal, setNoteModal] = useState<{ eventKind: string; label: string } | null>(null);
   const [noteText, setNoteText] = useState("");
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [promoting, setPromoting] = useState(false);
   // Tags
   const [tags, setTags] = useState<string[]>([]);
   const [savedTags, setSavedTags] = useState<string[]>([]);
@@ -235,6 +237,20 @@ export function NodeEditor({ slug }: { slug: string }) {
     setArchiveOpen(false);
     load();
   }, [slug, actor, load]);
+
+  // ── Promote to canon ────────────────────────────────────────────────────
+
+  const handlePromoteToCanon = useCallback(async () => {
+    setPromoting(true);
+    await fetch("/api/node/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, value: "canon", actor }),
+    });
+    setPromoting(false);
+    load();
+    showToast("promoted to canon");
+  }, [slug, actor, load, showToast]);
 
   // ── Action manifest dispatch ─────────────────────────────────────────────
 
@@ -466,7 +482,7 @@ export function NodeEditor({ slug }: { slug: string }) {
         </div>
 
         {/* Actions row */}
-        <div className="shrink-0 flex items-center gap-3">
+        <div className="shrink-0 flex items-center gap-3 flex-wrap">
           <button
             onClick={handleSave}
             disabled={!contentDirty || saving}
@@ -483,12 +499,23 @@ export function NodeEditor({ slug }: { slug: string }) {
           </span>
           <div className="ml-auto flex items-center gap-2">
             <span className="text-[11px] text-dim">{actor}</span>
-            <button
-              onClick={() => setArchiveOpen(true)}
-              className="text-[11px] text-dim hover:text-amber border border-rule/20 hover:border-amber/40 px-2 py-0.5 transition-colors"
-            >
-              archive
-            </button>
+            {node.status === "draft" && (actor === "randy" || actor === "dl") && (
+              <button
+                onClick={handlePromoteToCanon}
+                disabled={promoting}
+                className="text-[11px] border border-green-600/50 text-green-400 hover:bg-green-600/20 px-2 py-0.5 transition-colors disabled:opacity-40"
+              >
+                {promoting ? "promoting…" : "→ canon"}
+              </button>
+            )}
+            {(node.work_status === "done" || node.status === "canon") && (
+              <button
+                onClick={() => setArchiveOpen(true)}
+                className="text-[11px] text-dim hover:text-amber border border-rule/20 hover:border-amber/40 px-2 py-0.5 transition-colors"
+              >
+                archive
+              </button>
+            )}
           </div>
         </div>
 
@@ -508,6 +535,24 @@ export function NodeEditor({ slug }: { slug: string }) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Payload collapsible */}
+        {node.payload && Object.keys(node.payload).length > 0 && (
+          <div className="shrink-0 border-t border-rule/20 pt-2">
+            <button
+              onClick={() => setPayloadOpen(p => !p)}
+              className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-dim hover:text-muted transition-colors w-full text-left"
+            >
+              <span>{payloadOpen ? "▾" : "▸"}</span>
+              <span>payload</span>
+            </button>
+            {payloadOpen && (
+              <pre className="mt-1.5 font-mono text-[10px] text-dim bg-rule/10 border border-rule/20 p-2 overflow-x-auto leading-relaxed whitespace-pre-wrap">
+                {JSON.stringify(node.payload, null, 2)}
+              </pre>
+            )}
           </div>
         )}
       </div>

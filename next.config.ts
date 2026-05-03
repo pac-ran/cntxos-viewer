@@ -8,10 +8,6 @@ const nextConfig: NextConfig = {
         source: "/api/cx-walk-stream/:path*",
         destination: "https://cntxos.com/api/cx-walk-stream/:path*",
       },
-      {
-        source: "/api/node-update",
-        destination: "https://cntxos.com/api/node-update",
-      },
     ];
   },
 };
