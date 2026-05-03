@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, use } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { WrapperPanel } from "@/components/WrapperPanel";
 import { NodeEditor } from "@/components/NodeEditor";
 import { NodeViewer } from "@/components/NodeViewer";
@@ -21,7 +21,10 @@ interface Props {
 export default function NodePage({ params }: Props) {
   const { slug } = use(params);
   const router = useRouter();
-  const [mode, setMode] = useState<"view" | "edit">("view");
+  const searchParams = useSearchParams();
+  const [mode, setMode] = useState<"view" | "edit">(
+    searchParams.get("mode") === "edit" ? "edit" : "view"
+  );
 
   // Search state
   const [query, setQuery] = useState("");
