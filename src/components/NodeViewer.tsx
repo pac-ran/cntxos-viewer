@@ -75,7 +75,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-[13px] font-bold text-ink">{node.slug}</span>
           <span className="font-mono text-[9px] border border-rule/40 px-1.5 py-0.5 text-muted uppercase tracking-wide">{node.node_type}</span>
-          <span className={`font-mono text-[9px] border px-1.5 py-0.5 uppercase tracking-wide ${node.status === "canon" ? "border-green-600/50 text-green-700" : "border-rule/30 text-muted"}`}>
+          <span className={`font-mono text-[9px] border px-1.5 py-0.5 uppercase tracking-wide ${node.status === "canon" ? "border-green-600/50 text-green-400" : "border-rule/30 text-muted"}`}>
             {node.status}
           </span>
           <button
