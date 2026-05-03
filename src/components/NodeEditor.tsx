@@ -443,7 +443,7 @@ export function NodeEditor({ slug }: { slug: string }) {
                 }}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 placeholder={tags.length === 0 ? "add tags…" : "+"}
-                className="font-mono text-[10px] text-ink bg-transparent border border-rule/20 focus:border-rule/50 outline-none px-1.5 py-0.5 w-24 placeholder:text-muted/40"
+                className="font-mono text-[10px] text-ink bg-transparent border border-rule/20 focus:border-rule/50 outline-none px-1.5 py-0.5 w-24 placeholder:text-dim"
               />
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute top-full left-0 mt-0.5 bg-bg border border-rule/50 z-20 min-w-[120px] max-h-32 overflow-y-auto">
@@ -460,7 +460,7 @@ export function NodeEditor({ slug }: { slug: string }) {
               )}
             </div>
             {tagsDirty && (
-              <span className="text-[10px] text-muted/60">saving tags…</span>
+              <span className="text-[10px] text-dim">saving tags…</span>
             )}
           </div>
         </div>
@@ -473,19 +473,19 @@ export function NodeEditor({ slug }: { slug: string }) {
             className={`text-[12px] px-3 py-1 border transition-colors ${
               contentDirty && !saving
                 ? "border-ink/60 text-ink hover:bg-ink hover:text-bg cursor-pointer"
-                : "border-rule/20 text-muted/40 cursor-default"
+                : "border-rule/20 text-dim cursor-default"
             }`}
           >
             {saving ? "saving…" : saveMsg === "saved" ? "saved ✓" : saveMsg === "error" ? "error" : "save"}
           </button>
-          <span className="text-[11px] text-muted/60">
+          <span className="text-[11px] text-dim">
             {contentDirty ? "unsaved changes" : ""}
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[11px] text-muted/60">{actor}</span>
+            <span className="text-[11px] text-dim">{actor}</span>
             <button
               onClick={() => setArchiveOpen(true)}
-              className="text-[11px] text-muted/60 hover:text-amber border border-rule/20 hover:border-amber/40 px-2 py-0.5 transition-colors"
+              className="text-[11px] text-dim hover:text-amber border border-rule/20 hover:border-amber/40 px-2 py-0.5 transition-colors"
             >
               archive
             </button>
@@ -495,16 +495,16 @@ export function NodeEditor({ slug }: { slug: string }) {
         {/* Activity feed */}
         {events.length > 0 && (
           <div className="shrink-0 border-t border-rule/20 pt-2">
-            <div className="text-[10px] uppercase tracking-widest text-muted/60 mb-1.5">activity</div>
+            <div className="text-[10px] uppercase tracking-widest text-dim mb-1.5">activity</div>
             <div className="flex flex-col gap-1">
               {events.map((ev, i) => (
                 <div key={i} className="flex items-baseline gap-2 font-mono text-[10px]">
-                  <span className="text-muted/50 shrink-0">
+                  <span className="text-dim shrink-0">
                     {new Date(ev.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
-                  <span className="text-muted/70 shrink-0">{ev.actor}</span>
-                  <span className="text-ink/70">{ev.event_kind}</span>
-                  {ev.outcome && <span className="text-muted/50">→ {ev.outcome}</span>}
+                  <span className="text-muted shrink-0">{ev.actor}</span>
+                  <span className="text-muted">{ev.event_kind}</span>
+                  {ev.outcome && <span className="text-dim">→ {ev.outcome}</span>}
                 </div>
               ))}
             </div>
@@ -582,7 +582,7 @@ function HeaderStrip({
           {node.status}
         </span>
       </div>
-      <div className="font-mono text-[9px] text-muted/60">{String(node.scope)}</div>
+      <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
       <div className="flex gap-px">
         {WORK_STATUS_PILLS.map(ws => (
           <button

@@ -47,7 +47,7 @@ export function ConnectPanel() {
         {/* Boot prompt */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-widest text-muted/60">boot prompt</span>
+            <span className="text-[10px] uppercase tracking-widest text-dim">boot prompt</span>
             <button
               onClick={copy}
               className="text-[11px] border border-rule/40 px-2.5 py-0.5 text-muted hover:text-ink hover:border-rule/70 transition-colors"
@@ -55,14 +55,14 @@ export function ConnectPanel() {
               {copied ? "copied ✓" : "copy"}
             </button>
           </div>
-          <pre className="font-mono text-[11px] text-ink/80 bg-rule/10 border border-rule/30 p-4 leading-loose whitespace-pre-wrap">
+          <pre className="font-mono text-[11px] text-ink bg-rule/10 border border-rule/30 p-4 leading-loose whitespace-pre-wrap">
             {BOOT_PROMPT}
           </pre>
         </div>
 
         {/* Open in Claude */}
         <div className="flex flex-col gap-2">
-          <span className="text-[10px] uppercase tracking-widest text-muted/60">open in claude</span>
+          <span className="text-[10px] uppercase tracking-widest text-dim">open in claude</span>
           <a
             href={CLAUDE_URL}
             target="_blank"
@@ -75,11 +75,11 @@ export function ConnectPanel() {
 
         {/* QR code */}
         <div className="flex flex-col gap-2">
-          <span className="text-[10px] uppercase tracking-widest text-muted/60">scan to open</span>
+          <span className="text-[10px] uppercase tracking-widest text-dim">scan to open</span>
           <div className="p-3 bg-white inline-block w-fit">
             <QRCode value={CLAUDE_URL} size={156} />
           </div>
-          <span className="text-[10px] text-muted/50">
+          <span className="text-[10px] text-dim">
             opens Claude with boot prompt pre-loaded
           </span>
         </div>

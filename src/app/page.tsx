@@ -65,7 +65,7 @@ export default function LandingPage() {
 
         {/* Pane header */}
         <div className="shrink-0 px-4 py-2 border-b border-rule/30">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted/50">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-dim">
             session home
           </span>
         </div>
@@ -73,7 +73,7 @@ export default function LandingPage() {
         {/* Body */}
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-7 flex flex-col gap-5">
 
-          <p className="text-[12px] text-muted/70">What are you here to do?</p>
+          <p className="text-[12px] text-muted">What are you here to do?</p>
 
           {/* Mode cards */}
           <div className="flex flex-col gap-2">
@@ -88,21 +88,21 @@ export default function LandingPage() {
                 }`}
               >
                 <div className="text-[13px] font-semibold text-ink mb-0.5">{m.label}</div>
-                <div className="text-[11px] text-muted/70">{m.desc}</div>
+                <div className="text-[11px] text-muted">{m.desc}</div>
               </button>
             ))}
 
             {/* Manage — coming soon */}
             <div className="text-left border border-rule/20 px-4 py-3 opacity-40 cursor-default">
               <div className="text-[13px] font-semibold text-muted mb-0.5">Manage</div>
-              <div className="text-[11px] text-muted/60">Project queue. Work status and tasks. — coming soon</div>
+              <div className="text-[11px] text-dim">Project queue. Work status and tasks. — coming soon</div>
             </div>
           </div>
 
           {/* Node picker — appears after mode selection */}
           {selectedMode && (
             <div className="flex flex-col gap-3 pt-2 border-t border-rule/20">
-              <span className="text-[10px] uppercase tracking-widest text-muted/60">pick a node</span>
+              <span className="text-[10px] uppercase tracking-widest text-dim">pick a node</span>
 
               {/* Search */}
               <div className="relative">
@@ -121,10 +121,10 @@ export default function LandingPage() {
                   }}
                   autoFocus
                   placeholder="search nodes…"
-                  className="w-full bg-transparent border border-rule/30 focus:border-rule/60 outline-none px-2.5 py-1.5 text-[12px] text-ink placeholder:text-muted/40 transition-colors"
+                  className="w-full bg-transparent border border-rule/30 focus:border-rule/60 outline-none px-2.5 py-1.5 text-[12px] text-ink placeholder:text-dim transition-colors"
                 />
                 {searching && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted/50">…</span>
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-dim">…</span>
                 )}
                 {showResults && (
                   <div className="absolute top-full left-0 right-0 mt-0.5 bg-[#222] border border-rule/60 z-30 max-h-56 overflow-y-auto shadow-lg">
@@ -136,10 +136,10 @@ export default function LandingPage() {
                       >
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[11px] text-ink truncate">{r.slug}</span>
-                          <span className="font-mono text-[9px] border border-rule/40 px-1 py-px text-muted/70 shrink-0 uppercase">{r.node_type}</span>
+                          <span className="font-mono text-[9px] border border-rule/40 px-1 py-px text-muted shrink-0 uppercase">{r.node_type}</span>
                         </div>
                         {r.content && (
-                          <div className="text-[11px] text-muted/60 truncate mt-0.5">{r.content.slice(0, 80)}</div>
+                          <div className="text-[11px] text-dim truncate mt-0.5">{r.content.slice(0, 80)}</div>
                         )}
                       </button>
                     ))}
@@ -150,7 +150,7 @@ export default function LandingPage() {
               {/* Quick open default */}
               <button
                 onClick={() => go(DEFAULT_NODE, selectedMode)}
-                className="text-left text-[11px] text-muted/60 hover:text-muted transition-colors"
+                className="text-left text-[11px] text-dim hover:text-muted transition-colors"
               >
                 or open <span className="font-mono">{DEFAULT_NODE}</span> →
               </button>

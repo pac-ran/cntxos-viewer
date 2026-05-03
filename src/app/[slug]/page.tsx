@@ -65,7 +65,7 @@ export default function NodePage({ params }: Props) {
 
         {/* Pane header with search */}
         <div className="shrink-0 px-4 py-2 border-b border-rule/30 flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted/50 shrink-0">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-dim shrink-0">
             {mode === "view" ? "Node" : "Edit"}
           </span>
 
@@ -82,10 +82,10 @@ export default function NodePage({ params }: Props) {
                 if (e.key === "Enter" && results.length > 0) navigateTo(results[0].slug);
               }}
               placeholder="search nodes…"
-              className="w-full bg-transparent border border-rule/30 focus:border-rule/60 outline-none px-2.5 py-1 text-[12px] text-ink placeholder:text-muted/40 transition-colors"
+              className="w-full bg-transparent border border-rule/30 focus:border-rule/60 outline-none px-2.5 py-1 text-[12px] text-ink placeholder:text-dim transition-colors"
             />
             {searching && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted/50">…</span>
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-dim">…</span>
             )}
             {showResults && (
               <div className="absolute top-full left-0 right-0 mt-0.5 bg-[#222] border border-rule/60 z-30 max-h-64 overflow-y-auto shadow-lg">
@@ -97,10 +97,10 @@ export default function NodePage({ params }: Props) {
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[11px] text-ink truncate">{r.slug}</span>
-                      <span className="font-mono text-[9px] border border-rule/40 px-1 py-px text-muted/70 shrink-0 uppercase">{r.node_type}</span>
+                      <span className="font-mono text-[9px] border border-rule/40 px-1 py-px text-muted shrink-0 uppercase">{r.node_type}</span>
                     </div>
                     {r.content && (
-                      <div className="text-[11px] text-muted/60 truncate mt-0.5">
+                      <div className="text-[11px] text-dim truncate mt-0.5">
                         {r.content.slice(0, 80)}
                       </div>
                     )}

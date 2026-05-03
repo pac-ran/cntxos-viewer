@@ -85,7 +85,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
             edit
           </button>
         </div>
-        <div className="font-mono text-[9px] text-muted/60">{String(node.scope)}</div>
+        <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
         {/* work_status — read-only indicator */}
         <div className="flex gap-px">
           {(["inbox", "in-progress", "done"] as WorkStatus[]).map(ws => (
@@ -94,7 +94,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
               className={`font-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border ${
                 node.work_status === ws
                   ? "bg-ink text-bg border-ink"
-                  : "border-rule/20 text-muted/40"
+                  : "border-rule/20 text-dim"
               }`}
             >
               {STATUS_LABELS[ws]}
@@ -112,7 +112,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
             <ReactMarkdown>{node.content}</ReactMarkdown>
           </div>
         ) : (
-          <div className="text-[13px] text-muted/60 italic">no content</div>
+          <div className="text-[13px] text-dim italic">no content</div>
         )}
 
         {/* Tags */}
@@ -132,16 +132,16 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
         {/* Activity feed */}
         {events.length > 0 && (
           <div className="border-t border-rule/20 pt-3">
-            <div className="text-[10px] uppercase tracking-widest text-muted/60 mb-2">activity</div>
+            <div className="text-[10px] uppercase tracking-widest text-dim mb-2">activity</div>
             <div className="flex flex-col gap-1.5">
               {events.map((ev, i) => (
                 <div key={i} className="flex items-baseline gap-2 font-mono text-[10px]">
-                  <span className="text-muted/50 shrink-0">
+                  <span className="text-dim shrink-0">
                     {new Date(ev.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
-                  <span className="text-muted/70 shrink-0">{ev.actor}</span>
-                  <span className="text-ink/70">{ev.event_kind}</span>
-                  {ev.outcome && <span className="text-muted/50">→ {ev.outcome}</span>}
+                  <span className="text-muted shrink-0">{ev.actor}</span>
+                  <span className="text-muted">{ev.event_kind}</span>
+                  {ev.outcome && <span className="text-dim">→ {ev.outcome}</span>}
                 </div>
               ))}
             </div>
