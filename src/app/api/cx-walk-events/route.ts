@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   const relationTypes = searchParams.get("relation_type")?.split(",") ?? ["implements"];
-  const direction = searchParams.get("direction") ?? "forward";
+  const direction = searchParams.get("direction") ?? "both";
   const maxDepth = Math.min(parseInt(searchParams.get("max_depth") ?? "6", 10), 10);
 
   const sb = getServerSupabase();
@@ -65,43 +65,43 @@ export async function GET(req: NextRequest) {
         if (req.signal.aborted) break;
         if (currentLevel.length === 0) break;
 
-        // Fetch links from/to current level
-        const linkQuery = sb.schema("context_os").from("links").select("from_node_id,to_node_id,relation_type");
+        // Fetch links — for "both", do two queries and merge
+        type DirectedLink = { sourceId: string; targetId: string; relation: string };
+        const directedLinks: DirectedLink[] = [];
 
-        if (direction === "forward") {
-          linkQuery.in("from_node_id", currentLevel);
-        } else if (direction === "backward") {
-          linkQuery.in("to_node_id", currentLevel);
-        } else {
-          // both
-          linkQuery.or(`from_node_id.in.(${currentLevel.join(",")}),to_node_id.in.(${currentLevel.join(",")})`);
+        if (direction === "forward" || direction === "both") {
+          let q = sb.schema("context_os").from("links").select("from_node_id,to_node_id,relation_type").in("from_node_id", currentLevel);
+          if (relationTypes.length > 0 && !relationTypes.includes("all")) q = q.in("relation_type", relationTypes);
+          const { data } = await q;
+          for (const l of (data ?? []) as LinkRow[]) {
+            directedLinks.push({ sourceId: l.from_node_id, targetId: l.to_node_id, relation: l.relation_type });
+          }
+        }
+        if (direction === "backward" || direction === "both") {
+          let q = sb.schema("context_os").from("links").select("from_node_id,to_node_id,relation_type").in("to_node_id", currentLevel);
+          if (relationTypes.length > 0 && !relationTypes.includes("all")) q = q.in("relation_type", relationTypes);
+          const { data } = await q;
+          for (const l of (data ?? []) as LinkRow[]) {
+            directedLinks.push({ sourceId: l.to_node_id, targetId: l.from_node_id, relation: l.relation_type });
+          }
         }
 
-        if (relationTypes.length > 0 && !relationTypes.includes("all")) {
-          linkQuery.in("relation_type", relationTypes);
-        }
-
-        const { data: links } = await linkQuery;
-        if (!links || links.length === 0) break;
+        if (directedLinks.length === 0) break;
 
         // Collect new node IDs
         const newIds = new Set<string>();
         const newEdges: Array<{ from: string; to: string; relation: string }> = [];
 
-        for (const link of links as LinkRow[]) {
-          const targetId = direction === "backward" ? link.from_node_id : link.to_node_id;
-          const sourceId = direction === "backward" ? link.to_node_id : link.from_node_id;
+        for (const link of directedLinks) {
+          const sourceNode = allNodes.find(n => n.id === link.sourceId);
+          const sourceSlug = sourceNode?.slug ?? link.sourceId;
 
-          // Find slug for sourceId and targetId
-          const sourceNode = allNodes.find(n => n.id === sourceId);
-          const sourceSlug = sourceNode?.slug ?? sourceId;
-
-          if (!visitedIds.has(targetId)) {
-            newIds.add(targetId);
-            visitedIds.add(targetId);
+          if (!visitedIds.has(link.targetId)) {
+            newIds.add(link.targetId);
+            visitedIds.add(link.targetId);
           }
 
-          newEdges.push({ from: sourceSlug, to: targetId, relation: link.relation_type });
+          newEdges.push({ from: sourceSlug, to: link.targetId, relation: link.relation });
         }
 
         if (newIds.size === 0) break;

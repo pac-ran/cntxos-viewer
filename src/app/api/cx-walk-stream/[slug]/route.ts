@@ -9,7 +9,7 @@ export async function GET(
   const { slug } = await params;
   const { searchParams } = req.nextUrl;
   const relationType = searchParams.get("relation_type") ?? "implements";
-  const direction = searchParams.get("direction") ?? "forward";
+  const direction = searchParams.get("direction") ?? "both";
   const maxDepth = searchParams.get("max_depth") ?? "6";
 
   const eventsUrl = `/api/cx-walk-events?slug=${encodeURIComponent(slug)}&relation_type=${encodeURIComponent(relationType)}&direction=${encodeURIComponent(direction)}&max_depth=${encodeURIComponent(maxDepth)}`;
