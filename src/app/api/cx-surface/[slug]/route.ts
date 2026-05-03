@@ -4,6 +4,10 @@ import { marked } from "marked";
 
 export const dynamic = "force-dynamic";
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -57,13 +61,14 @@ export async function GET(
         created_at: string;
       }[]).map(c => {
         const p = c.payload ?? {};
-        const name = String(p.name ?? c.slug);
-        const company = String(p.company ?? "—");
-        const email = String(p.email ?? "—");
-        const source = String(p.source ?? "—");
-        const tags = (c.tags ?? []).filter(t => !["contact","demo"].includes(t)).join(", ") || "—";
+        const name = escapeHtml(String(p.name ?? c.slug));
+        const company = escapeHtml(String(p.company ?? "—"));
+        const email = escapeHtml(String(p.email ?? "—"));
+        const source = escapeHtml(String(p.source ?? "—"));
+        const tags = escapeHtml((c.tags ?? []).filter(t => !["contact","demo"].includes(t)).join(", ") || "—");
+        const safeSlug = escapeHtml(c.slug);
         return `<tr>
-          <td><a href="/${c.slug}" style="color:#0098fd;text-decoration:none;font-family:monospace">${name}</a></td>
+          <td><a href="/${safeSlug}" style="color:#0098fd;text-decoration:none;font-family:monospace">${name}</a></td>
           <td>${company}</td>
           <td style="font-size:11px">${email}</td>
           <td><span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 5px;color:#d8d8dc">${source}</span></td>
