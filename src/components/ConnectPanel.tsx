@@ -36,17 +36,38 @@ Content-Type: application/json
 Slot types: "node" (most common), "stream" (walk formula), "surface"
 Multiple slots render as a grid.`;
 
+const QUICK_REF = `Drive the right pane — paste this, fill in the slug:
 
+curl -X POST https://viewer.cntxos.com/api/node/event \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "slug": "conv-frame-state",
+    "actor": "dl",
+    "event_kind": "frame-update",
+    "payload": {
+      "slots": [{ "name": "main", "type": "node", "ref": "NODE-SLUG-HERE" }]
+    }
+  }'
+
+Replace NODE-SLUG-HERE with any node slug (e.g. m-box-render-build).
+Multiple slots = grid: add more objects to the "slots" array.`;
 
 const CLAUDE_URL = `https://claude.ai/new?q=${encodeURIComponent(BOOT_PROMPT)}`;
 
 export function ConnectPanel() {
-  const [copied, setCopied] = useState(false);
+  const [bootCopied, setBootCopied] = useState(false);
+  const [refCopied, setRefCopied] = useState(false);
 
-  const copy = () => {
+  const copyBoot = () => {
     navigator.clipboard.writeText(BOOT_PROMPT);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setBootCopied(true);
+    setTimeout(() => setBootCopied(false), 2000);
+  };
+
+  const copyRef = () => {
+    navigator.clipboard.writeText(QUICK_REF);
+    setRefCopied(true);
+    setTimeout(() => setRefCopied(false), 2000);
   };
 
   return (
@@ -61,25 +82,35 @@ export function ConnectPanel() {
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 flex flex-col gap-7">
 
-        <p className="text-[13px] text-muted leading-relaxed max-w-md">
-          Paste this prompt into Claude, ChatGPT, or any AI to sync it with
-          this session — or scan the code to open Claude with the prompt
-          pre-loaded.
-        </p>
-
         {/* Boot prompt */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-widest text-dim">boot prompt</span>
+            <span className="text-[10px] uppercase tracking-widest text-dim">boot prompt — paste to start a session</span>
             <button
-              onClick={copy}
-              className="text-[11px] border border-rule/40 px-2.5 py-0.5 text-muted hover:text-ink hover:border-rule/70 transition-colors"
+              onClick={copyBoot}
+              className="text-[11px] border border-rule/40 px-2.5 py-0.5 text-muted hover:text-ink hover:border-rule/70 transition-colors shrink-0"
             >
-              {copied ? "copied ✓" : "copy"}
+              {bootCopied ? "copied ✓" : "copy"}
             </button>
           </div>
           <pre className="font-mono text-[11px] text-ink bg-rule/10 border border-rule/30 p-4 leading-loose whitespace-pre-wrap">
             {BOOT_PROMPT}
+          </pre>
+        </div>
+
+        {/* Quick reference — paste mid-conversation */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-widest text-dim">quick ref — paste this if they get lost</span>
+            <button
+              onClick={copyRef}
+              className="text-[11px] border border-accent/50 px-2.5 py-0.5 text-accent hover:bg-accent hover:text-bg transition-colors shrink-0"
+            >
+              {refCopied ? "copied ✓" : "copy"}
+            </button>
+          </div>
+          <pre className="font-mono text-[11px] text-ink bg-rule/10 border border-rule/30 p-4 leading-loose whitespace-pre-wrap">
+            {QUICK_REF}
           </pre>
         </div>
 
