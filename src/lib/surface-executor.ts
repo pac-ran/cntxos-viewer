@@ -78,8 +78,10 @@ export async function executeSurface(
         const orderBy = p.order_by ? String(p.order_by) : "created_at";
         const asc = p.order_asc !== false;
 
+        // Use public schema view — scope column is text there, LIKE works.
+        // context_os.nodes has scope as ltree which rejects ~~ operator.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let q = (sb.schema("context_os") as any)
+        let q = (sb as any)
           .from("nodes")
           .select("id,slug,node_type,content,scope,payload,tags,status,work_status,claimed_by,updated_at,created_at")
           .like("scope", `${scope}%`)
@@ -99,7 +101,7 @@ export async function executeSurface(
         const nodeSlug = String(p.slug ?? "");
         if (!nodeSlug) { ctx[step.id] = null; break; }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await (sb.schema("context_os") as any)
+        const { data } = await (sb as any)
           .from("nodes")
           .select("id,slug,node_type,content,scope,payload,tags,status,work_status,claimed_by")
           .eq("slug", nodeSlug)
@@ -112,7 +114,7 @@ export async function executeSurface(
         const nodeSlug = String(p.node_slug ?? p.slug ?? "");
         const limit = Number(p.limit ?? 20);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: n } = await (sb.schema("context_os") as any)
+        const { data: n } = await (sb as any)
           .from("nodes").select("id").eq("slug", nodeSlug).single();
         if (!n?.id) { ctx[step.id] = []; break; }
 
