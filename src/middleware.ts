@@ -11,8 +11,14 @@ const PUBLIC_API_PATHS = [
 ];
 
 function isPublicApi(pathname: string): boolean {
-  // GET-only node read
-  if (pathname.match(/^\/api\/node\/[^/]+$/) && !pathname.includes("/save") && !pathname.includes("/tags") && !pathname.includes("/archive") && !pathname.includes("/status") && !pathname.includes("/work-status")) {
+  // GET-only node read — explicitly exclude all write sub-routes
+  if (pathname.match(/^\/api\/node\/[^/]+$/) &&
+      !pathname.includes("/save") &&
+      !pathname.includes("/tags") &&
+      !pathname.includes("/archive") &&
+      !pathname.includes("/status") &&
+      !pathname.includes("/work-status") &&
+      !pathname.includes("/event")) {
     return true;
   }
   return PUBLIC_API_PATHS.some((p) => pathname.startsWith(p));
