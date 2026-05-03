@@ -6,6 +6,7 @@ const PUBLIC_API_PATHS = [
   "/api/cx-surface/",
   "/api/cx-walk-events",
   "/api/cx-walk-stream/",
+  "/api/frame-state",
   "/api/node/session-randy",
   "/api/search",
 ];
