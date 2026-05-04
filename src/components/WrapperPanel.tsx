@@ -42,8 +42,13 @@ export function WrapperPanel() {
         { event: "INSERT", schema: "context_os", table: "events", filter: `subject_node_id=eq.${CONV_FRAME_STATE_ID}` },
         (payload) => {
           if ((payload.new as Record<string, unknown>)?.event_kind !== "frame-update") return;
-          const newSlots = ((payload.new as Record<string, unknown>).payload as { slots?: FrameSlot[] })?.slots ?? [];
-          setSlots(newSlots);
+          const evPayload = (payload.new as Record<string, unknown>).payload as { slots?: FrameSlot[]; mode?: string } | undefined;
+          const newSlots = evPayload?.slots ?? [];
+          if (evPayload?.mode === "append") {
+            setSlots(prev => [...(prev ?? []), ...newSlots]);
+          } else {
+            setSlots(newSlots);
+          }
         }
       )
       .subscribe((s) => setLive(s === "SUBSCRIBED"));
