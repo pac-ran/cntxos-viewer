@@ -105,7 +105,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
       body: JSON.stringify({
         slug,
         actor: "viewer",
-        event_kind: "response",
+        event_kind: "answer",
         payload: { [eventKind]: value },
       }),
     });
