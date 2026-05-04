@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { marked } from "marked";
-import { executeSurface, SurfaceSpec, SurfaceResult, ColumnEntry } from "@/lib/surface-executor";
+import { executeSurface, SurfaceSpec, SurfaceResult, ColumnEntry, ConditionalFormatRule } from "@/lib/surface-executor";
 
 export const dynamic = "force-dynamic";
 
@@ -227,31 +227,56 @@ function renderTable(result: SurfaceResult): string {
     `<th style="text-align:left;padding:.3em .7em;font-size:10px;color:#888;font-weight:500;border-bottom:1px solid #3a3a3a">${escapeHtml(label.split(".").pop() ?? label).toUpperCase()}</th>`
   ).join("");
 
+  const fmtRules: ConditionalFormatRule[] = result.conditional_formatting ?? [];
+
   const rows = items.map(item => {
+    // Evaluate row-level and cell-level conditional formatting
+    let rowStyle = "border-bottom:1px solid #2a2a2a";
+    const cellStyles = new Map<string, string>();
+    for (const rule of fmtRules) {
+      let ruleVal = resolveField(item, rule.column);
+      if (ruleVal == null) ruleVal = resolveField((item.payload ?? {}) as Record<string, unknown>, rule.column);
+      if (String(ruleVal) === rule.value) {
+        if (rule.row_style) rowStyle += ";" + rule.row_style;
+        if (rule.cell_style) cellStyles.set(rule.column, rule.cell_style);
+      }
+    }
+
     const cells = cols.map(({ key }) => {
-      // P0 Bug 2: try top-level field first, then fall back to payload.*
       let val = resolveField(item, key);
       if (val == null) {
         const pl = (item.payload ?? {}) as Record<string, unknown>;
         val = resolveField(pl, key);
       }
 
-      // Existing dedicated branches for work_status and slug
+      // Build extra cell style from conditional formatting
+      const extraStyle = cellStyles.get(key) ?? "";
+
       if (key === "work_status") {
         const s = val == null ? "" : String(val);
-        return s ? `<td style="padding:.3em .7em">${statusBadge(s)}</td>` : `<td style="padding:.3em .7em"></td>`;
+        const style = extraStyle ? `padding:.3em .7em;${extraStyle}` : "padding:.3em .7em";
+        return s ? `<td style="${style}">${statusBadge(s)}</td>` : `<td style="${style}"></td>`;
       }
       if (key === "slug") {
         const s = val == null ? "" : escapeHtml(String(val));
-        return `<td style="padding:.3em .7em"><a href="/${s}" style="color:#0098fd;font-family:monospace;font-size:11px">${s}</a></td>`;
+        const style = extraStyle ? `padding:.3em .7em;${extraStyle}` : "padding:.3em .7em";
+        return `<td style="${style}"><a href="/${s}" style="color:#0098fd;font-family:monospace;font-size:11px">${s}</a></td>`;
       }
 
-      if (val == null || val === "") return `<td style="padding:.3em .7em;font-size:12px"></td>`;
+      if (val == null || val === "") {
+        return `<td style="padding:.3em .7em;font-size:12px${extraStyle ? ';' + extraStyle : ''}"></td>`;
+      }
 
-      // Semantic type dispatch
-      return renderSemanticCell(key, val);
+      // Semantic type dispatch — pass extra style via a wrapper approach
+      const semanticTd = renderSemanticCell(key, val);
+      if (extraStyle) {
+        // Inject extra style into the semantic <td> — splice into existing style="..."
+        return semanticTd.replace(/^<td style="/, `<td style="${extraStyle};`);
+      }
+      return semanticTd;
     }).join("");
-    return `<tr style="border-bottom:1px solid #2a2a2a">${cells}</tr>`;
+
+    return `<tr style="${rowStyle}">${cells}</tr>`;
   }).join("");
 
   return `<div style="font-size:11px;color:#666;margin-bottom:8px">${items.length} item${items.length === 1 ? "" : "s"}</div>
@@ -529,6 +554,7 @@ export async function GET(
       render_shape: String(payload.render_shape ?? "card-grid") as SurfaceSpec["render_shape"],
       columns: Array.isArray(payload.columns) ? payload.columns as ColumnEntry[] : undefined,
       group_by: typeof payload.group_by === "string" ? payload.group_by : undefined,
+      conditional_formatting: Array.isArray(payload.conditional_formatting) ? payload.conditional_formatting as ConditionalFormatRule[] : undefined,
       steps: payload.steps as SurfaceSpec["steps"],
     };
 

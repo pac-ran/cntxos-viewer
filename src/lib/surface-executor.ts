@@ -20,11 +20,19 @@ export interface SurfaceStep {
 // Column entries may be plain strings or {key, label} objects
 export type ColumnEntry = string | { key: string; label?: string };
 
+export interface ConditionalFormatRule {
+  column: string;
+  value: string;
+  row_style?: string;
+  cell_style?: string;
+}
+
 export interface SurfaceSpec {
   title?: string;
   render_shape: RenderShape;
   columns?: ColumnEntry[];
   group_by?: string;
+  conditional_formatting?: ConditionalFormatRule[];
   steps: SurfaceStep[];
 }
 
@@ -34,6 +42,7 @@ export interface SurfaceResult {
   render_shape: RenderShape;
   columns?: ColumnEntry[];
   group_by?: string;
+  conditional_formatting?: ConditionalFormatRule[];
   data: Record<string, unknown>;
 }
 
@@ -238,6 +247,7 @@ export async function executeSurface(
     render_shape: spec.render_shape as RenderShape,
     columns: spec.columns,
     group_by: spec.group_by,
+    conditional_formatting: spec.conditional_formatting,
     data: ctx,
   };
 }
