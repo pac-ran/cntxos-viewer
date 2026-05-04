@@ -216,15 +216,44 @@ function renderDashboard(result: SurfaceResult): string {
     : "<p style='color:#aaa;font-style:italic'>No data.</p>";
 }
 
+function renderActivityStream(result: SurfaceResult): string {
+  let items: Record<string, unknown>[] = [];
+  for (const val of Object.values(result.data)) {
+    if (Array.isArray(val) && val.length > 0) {
+      items = val as Record<string, unknown>[];
+      break;
+    }
+  }
+
+  if (items.length === 0) {
+    return "<p style='color:#aaa;font-style:italic'>No items found.</p>";
+  }
+
+  const rows = items.map(item => {
+    const evpl = (item.payload ?? {}) as Record<string, unknown>;
+    const headline = escapeHtml(String(evpl.note ?? evpl.question ?? evpl.summary ?? item.event_kind ?? "—").slice(0, 160));
+    const actor = item.actor ? `<span style="font-size:10px;color:#888">${escapeHtml(String(item.actor))}</span>` : "";
+    const ts = item.occurred_at
+      ? `<span style="font-size:10px;color:#555">${escapeHtml(String(item.occurred_at).slice(0, 10))}</span>`
+      : "";
+    return `<div style="display:flex;flex-direction:column;gap:3px;padding:8px 0;border-bottom:1px solid #2a2a2a">
+      <span style="color:#e5e5e5;font-size:13px;line-height:1.4">${headline}</span>
+      <div style="display:flex;gap:8px">${actor}${ts}</div>
+    </div>`;
+  }).join("");
+
+  return `<div>${rows}</div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
-    case "kanban":        return renderKanban(result);
-    case "card-grid":     return renderCardGrid(result);
-    case "table":         return renderTable(result);
-    case "list":          return renderList(result);
-    case "dashboard":     return renderDashboard(result);
-    case "activity-stream": return renderList(result);
-    default:              return renderCardGrid(result);
+    case "kanban":          return renderKanban(result);
+    case "card-grid":       return renderCardGrid(result);
+    case "table":           return renderTable(result);
+    case "list":            return renderList(result);
+    case "dashboard":       return renderDashboard(result);
+    case "activity-stream": return renderActivityStream(result);
+    default:                return renderCardGrid(result);
   }
 }
 
