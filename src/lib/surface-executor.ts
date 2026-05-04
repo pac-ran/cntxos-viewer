@@ -256,6 +256,100 @@ export async function executeSurface(
         break;
       }
 
+      case "psos_adapter": {
+        const ALLOWED_TABLES = new Set([
+          "quotes_v2", "quote_v2_items", "quote_v2_activity",
+          "orders", "customers",
+        ]);
+        const table = String(p.table ?? "");
+        if (!ALLOWED_TABLES.has(table)) {
+          throw new Error(`psos_adapter: table '${table}' not in allowlist`);
+        }
+        const limit = Number(p.limit ?? 50);
+        const filter = p.filter as Record<string, string> | undefined;
+        const orderByRaw = p.order_by ? String(p.order_by) : undefined;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let q: any = (sb.schema("psos") as any).from(table).select("*").limit(limit);
+        if (filter) {
+          for (const [col, val] of Object.entries(filter)) {
+            q = q.eq(col, val);
+          }
+        }
+        if (orderByRaw) {
+          const parts = orderByRaw.trim().split(/\s+/);
+          const col = parts[0];
+          const asc = parts[1]?.toLowerCase() !== "desc";
+          q = q.order(col, { ascending: asc });
+        }
+        const { data: psosData } = await q;
+        ctx[step.id] = psosData ?? [];
+        break;
+      }
+
+      default:
+        ctx[step.id] = {};
+    }
+  }
+
+  // Stake phase: process stake steps after walk phase completes
+  for (const step of spec.steps) {
+    if (step.phase !== "stake") continue;
+    const p = interpolate(step.params ?? {}, params) as Record<string, unknown>;
+
+    switch (step.op) {
+      case "ingest_external": {
+        // Read source rows from walk-phase context
+        const sourceKey = String(p.source ?? "");
+        const rows = Array.isArray(ctx[sourceKey]) ? (ctx[sourceKey] as Record<string, unknown>[]) : [];
+
+        // Slug prefix and tag config
+        const slugPrefix = String(p.slug_prefix ?? "pso");
+        const idField = String(p.id_field ?? "id");
+        const nodeType = "entity";
+        const nodeTags: string[] = Array.isArray(p.tags)
+          ? (p.tags as unknown[]).map(String)
+          : ["pso", "org-data"];
+        const scope = String(p.scope ?? "root.psos");
+
+        const upserted: string[] = [];
+        for (const row of rows) {
+          const rowId = String(row[idField] ?? "");
+          if (!rowId) continue;
+          const nodeSlug = `${slugPrefix}-${rowId}`;
+
+          // Build a content summary
+          const customer = String(row.customer ?? row.customer_id ?? "");
+          const total = row.total != null ? String(row.total) : "";
+          const status = String(row.status ?? "");
+          const contentLine = [
+            `# ${nodeSlug}`,
+            customer ? `Customer: ${customer}` : "",
+            total ? `Total: ${total}` : "",
+            status ? `Status: ${status}` : "",
+          ].filter(Boolean).join("\n");
+
+          // Upsert into context_os.nodes — idempotent on slug
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (sb.schema("context_os") as any).from("nodes").upsert(
+            {
+              slug: nodeSlug,
+              node_type: nodeType,
+              scope,
+              status: "canon",
+              work_status: "done",
+              tags: nodeTags,
+              content: contentLine,
+              payload: row,
+            },
+            { onConflict: "slug" }
+          );
+          upserted.push(nodeSlug);
+        }
+        ctx[step.id] = { upserted, count: upserted.length };
+        break;
+      }
+
       default:
         ctx[step.id] = {};
     }
