@@ -185,7 +185,9 @@ function renderDashboard(result: SurfaceResult): string {
       if (items.length === 0) continue;
       const rows = items.slice(0, 8).map(item => {
         const slug = escapeHtml(String(item.slug ?? ""));
-        const content = escapeHtml(String(item.content ?? slug));
+        const rawContent = String(item.content ?? item.event_kind ?? slug);
+        const firstLine = rawContent.split("\n")[0].replace(/^#+\s*/, "").replace(/\*\*/g, "").slice(0, 90);
+        const content = escapeHtml(firstLine || slug);
         const ws = String(item.work_status ?? "");
         return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #2a2a2a;font-size:12px">
           <a href="/${slug}" style="color:#fff;text-decoration:none;flex:1">${content}</a>
@@ -227,7 +229,7 @@ export async function GET(
   const { data: node, error } = await sb
     .schema("context_os")
     .from("nodes")
-    .select("slug, node_type, status, work_status, content, tags, scope, payload")
+    .select("id, slug, node_type, status, work_status, content, tags, scope, payload")
     .eq("slug", slug)
     .single();
 
@@ -236,6 +238,7 @@ export async function GET(
   }
 
   const n = node as {
+    id: string;
     slug: string;
     node_type: string;
     status: string;
@@ -265,6 +268,14 @@ export async function GET(
     try {
       const result = await executeSurface(spec, slug, urlParams);
       contentHtml = renderSurface(result);
+      // Fire-and-forget: record that this surface was rendered
+      void sb.schema("context_os").from("events").insert({
+        event_kind: "viewer-rendered",
+        actor: "viewer",
+        subject_node_id: n.id,
+        payload: { slot: "main", slug, rendered_at: new Date().toISOString() },
+        phase: "stake",
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       contentHtml = `<p style="color:#ef4444;font-family:monospace;font-size:12px">Surface error: ${escapeHtml(msg)}</p>`;
