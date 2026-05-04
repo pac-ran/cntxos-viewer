@@ -113,21 +113,41 @@ export async function executeSurface(
       case "fetch_events": {
         const nodeSlug = String(p.node_slug ?? p.slug ?? "");
         const limit = Number(p.limit ?? 20);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: n } = await (sb as any)
-          .from("nodes").select("id").eq("slug", nodeSlug).single();
-        if (!n?.id) { ctx[step.id] = []; break; }
+        // event_kinds accepts array OR singular event_kind param
+        const eventKinds: string[] | undefined = Array.isArray(p.event_kinds)
+          ? (p.event_kinds as string[])
+          : (typeof p.event_kinds === "string" && p.event_kinds.length > 0)
+            ? [(p.event_kinds as string)]
+            : (p.event_kind ? [String(p.event_kind)] : undefined);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let q = (sb.schema("context_os") as any)
-          .from("events")
-          .select("event_kind,actor,outcome,payload,occurred_at")
-          .eq("subject_node_id", n.id)
-          .order("occurred_at", { ascending: false })
-          .limit(limit);
-        if (p.event_kind) q = q.eq("event_kind", String(p.event_kind));
-        const { data } = await q;
-        ctx[step.id] = data ?? [];
+        if (nodeSlug) {
+          // Mode: node-specific — fetch events for a specific node slug
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: n } = await (sb as any)
+            .from("nodes").select("id").eq("slug", nodeSlug).single();
+          if (!n?.id) { ctx[step.id] = []; break; }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let q = (sb.schema("context_os") as any)
+            .from("events")
+            .select("event_kind,actor,outcome,payload,occurred_at,subject_node_id")
+            .eq("subject_node_id", n.id)
+            .order("occurred_at", { ascending: false })
+            .limit(limit);
+          if (eventKinds?.length) q = q.in("event_kind", eventKinds);
+          const { data } = await q;
+          ctx[step.id] = data ?? [];
+        } else {
+          // Mode: global feed — no slug, filter by event_kind/event_kinds
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let q = (sb.schema("context_os") as any)
+            .from("events")
+            .select("event_kind,actor,outcome,payload,occurred_at,subject_node_id")
+            .order("occurred_at", { ascending: false })
+            .limit(limit);
+          if (eventKinds?.length) q = q.in("event_kind", eventKinds);
+          const { data } = await q;
+          ctx[step.id] = data ?? [];
+        }
         break;
       }
 
