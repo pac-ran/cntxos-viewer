@@ -198,6 +198,16 @@ function renderDashboard(result: SurfaceResult): string {
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #3a3a3a">${escapeHtml(stepId)}</div>
         ${rows}
       </div>`);
+    } else if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+      const item = val as Record<string, unknown>;
+      const pl = (item.payload ?? {}) as Record<string, unknown>;
+      const rawName = String(pl.display_name ?? item.content ?? item.slug ?? stepId);
+      const name = escapeHtml(rawName.split("\n")[0].replace(/^#+\s*/, "").replace(/\*\*/g, "").slice(0, 90));
+      const kind = pl.kind ? `<span style="font-size:10px;color:#888;margin-left:6px">${escapeHtml(String(pl.kind))}</span>` : "";
+      sections.push(`<div style="margin-bottom:20px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#888;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #3a3a3a">${escapeHtml(stepId)}</div>
+        <div style="font-size:13px;color:#fff;padding:6px 0">${name}${kind}</div>
+      </div>`);
     }
   }
 

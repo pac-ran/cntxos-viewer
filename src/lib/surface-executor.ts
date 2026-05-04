@@ -119,6 +119,27 @@ export async function executeSurface(
           : (typeof p.event_kinds === "string" && p.event_kinds.length > 0)
             ? [(p.event_kinds as string)]
             : (p.event_kind ? [String(p.event_kind)] : undefined);
+        const scopePrefix = p.scope_prefix ? String(p.scope_prefix) : "";
+
+        if (scopePrefix) {
+          // public schema: public.nodes.scope is text — LIKE works
+          // do NOT use sb.schema("context_os") here — ltree rejects ~~
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let q = (sb as any)
+            .from("events")
+            .select("event_kind,actor,outcome,payload,occurred_at,subject_node_id,nodes!inner(scope)")
+            .like("nodes.scope", `${scopePrefix}%`)
+            .order("occurred_at", { ascending: false })
+            .limit(limit);
+          if (eventKinds?.length) q = q.in("event_kind", eventKinds);
+          if (p.actor) q = q.eq("actor", String(p.actor));
+          const { data } = await q;
+          ctx[step.id] = (data ?? []).map((e: Record<string, unknown>) => {
+            const { nodes: _n, ...rest } = e as Record<string, unknown> & { nodes: unknown };
+            return rest;
+          });
+          break;
+        }
 
         if (nodeSlug) {
           // Mode: node-specific — fetch events for a specific node slug
