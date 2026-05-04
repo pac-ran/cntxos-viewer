@@ -245,6 +245,121 @@ function renderActivityStream(result: SurfaceResult): string {
   return `<div>${rows}</div>`;
 }
 
+function renderApprovalQueue(result: SurfaceResult): string {
+  // Collect proposal rows from any array in result.data
+  let items: Record<string, unknown>[] = [];
+  for (const val of Object.values(result.data)) {
+    if (Array.isArray(val)) {
+      items = val as Record<string, unknown>[];
+      break;
+    }
+  }
+
+  if (items.length === 0) {
+    return "<p style='color:#aaa;font-style:italic;padding:12px 0'>No pending proposals. Queue is clear.</p>";
+  }
+
+  const rows = items.map(item => {
+    const pl = (item.payload ?? {}) as Record<string, unknown>;
+
+    // proposal_id: prefer top-level field from RPC, fall back to payload
+    const proposalId = escapeHtml(String(item.proposal_id ?? pl.proposal_id ?? item.id ?? "—"));
+
+    // agent: actor field
+    const agent = escapeHtml(String(item.actor ?? pl.actor ?? "—"));
+
+    // action description: action_slug > action_kind > payload.action_slug
+    const actionSlug = escapeHtml(String(
+      item.action_slug ?? pl.action_slug ?? pl.action_kind ?? "—"
+    ));
+
+    // subject: subject_slug / subject_content from RPC
+    const subjectSlug = item.subject_slug ? escapeHtml(String(item.subject_slug)) : "";
+    const subjectContent = item.subject_content
+      ? escapeHtml(String(item.subject_content).slice(0, 80))
+      : "";
+
+    // date
+    const ts = item.occurred_at
+      ? escapeHtml(String(item.occurred_at).slice(0, 16).replace("T", " "))
+      : "—";
+
+    // expires
+    const expires = item.expires_at
+      ? `<span style="font-size:10px;color:#f59e0b">expires ${escapeHtml(String(item.expires_at).slice(0, 10))}</span>`
+      : "";
+
+    const subjectLine = subjectSlug
+      ? `<div style="font-size:10px;color:#666;margin-top:2px">→ <span style="color:#888">${subjectSlug}</span>${subjectContent ? `: ${subjectContent}` : ""}</div>`
+      : "";
+
+    return `<div style="background:#1e1e1e;border:1px solid #3a3a3a;border-radius:4px;padding:10px 12px;display:flex;align-items:flex-start;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:#e5e5e5;margin-bottom:3px">${actionSlug}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-family:monospace;font-size:10px;color:#0098fd">${agent}</span>
+          <span style="font-size:10px;color:#555">${ts}</span>
+          ${expires}
+        </div>
+        ${subjectLine}
+        <div style="font-family:monospace;font-size:9px;color:#4a4a4a;margin-top:3px">id:${proposalId}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+        <form method="POST" action="/api/cx-event" style="margin:0" onsubmit="return handleApprovalSubmit(event)">
+          <input type="hidden" name="event_kind" value="proposal-approved" />
+          <input type="hidden" name="proposal_id" value="${proposalId}" />
+          <input type="hidden" name="actor" value="cc" />
+          <button type="submit"
+            style="background:#166534;color:#4ade80;border:1px solid #166534;border-radius:3px;padding:4px 10px;font-size:11px;font-family:monospace;cursor:pointer;font-weight:600"
+          >Approve</button>
+        </form>
+        <form method="POST" action="/api/cx-event" style="margin:0" onsubmit="return handleApprovalSubmit(event)">
+          <input type="hidden" name="event_kind" value="proposal-denied" />
+          <input type="hidden" name="proposal_id" value="${proposalId}" />
+          <input type="hidden" name="actor" value="cc" />
+          <button type="submit"
+            style="background:#3b0000;color:#ef4444;border:1px solid #7f1d1d;border-radius:3px;padding:4px 10px;font-size:11px;font-family:monospace;cursor:pointer;font-weight:600"
+          >Deny</button>
+        </form>
+      </div>
+    </div>`;
+  }).join("\n");
+
+  const script = `<script>
+function handleApprovalSubmit(e) {
+  e.preventDefault();
+  var form = e.currentTarget;
+  var data = {};
+  new FormData(form).forEach(function(v,k){ data[k]=v; });
+  var btn = form.querySelector('button[type=submit]');
+  var originalLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  fetch('/api/cx-event', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  }).then(function(r){ return r.json(); }).then(function(res) {
+    if (res.ok) {
+      var row = form.closest('div[style*="background:#1e1e1e"]');
+      if (row) { row.style.opacity = '0.4'; row.style.pointerEvents = 'none'; }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+      alert('Error: ' + (res.error || 'unknown'));
+    }
+  }).catch(function(err) {
+    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+    alert('Network error: ' + err);
+  });
+  return false;
+}
+</script>`;
+
+  return `${script}<div style="display:flex;flex-direction:column;gap:8px">
+    <div style="font-size:10px;color:#888;margin-bottom:4px">${items.length} pending proposal${items.length === 1 ? "" : "s"}</div>
+    ${rows}
+  </div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":          return renderKanban(result);
@@ -253,6 +368,7 @@ function renderSurface(result: SurfaceResult): string {
     case "list":            return renderList(result);
     case "dashboard":       return renderDashboard(result);
     case "activity-stream": return renderActivityStream(result);
+    case "approval-queue":  return renderApprovalQueue(result);
     default:                return renderCardGrid(result);
   }
 }

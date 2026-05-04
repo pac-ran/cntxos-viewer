@@ -8,7 +8,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
-  | "activity-stream" | "list" | "prose";
+  | "activity-stream" | "list" | "prose" | "approval-queue";
 
 export interface SurfaceStep {
   id: string;
@@ -210,6 +210,16 @@ export async function executeSurface(
 
       case "filter": {
         ctx[step.id] = ctx[String(p.source ?? "")] ?? [];
+        break;
+      }
+
+      case "walk_pending_proposals": {
+        // Powers s-admin-approval-queue. Returns proposal events with no
+        // follow-up resolution (proposal-approved / proposal-denied / proposal-expired).
+        const limit = Number(p.limit ?? 50);
+        const { data, error } = await sb.rpc("list_pending_proposals", { p_limit: limit });
+        if (error) throw new Error(`walk_pending_proposals: ${error.message}`);
+        ctx[step.id] = (data as unknown[]) ?? [];
         break;
       }
 
