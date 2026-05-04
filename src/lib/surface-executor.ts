@@ -8,7 +8,8 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
-  | "activity-stream" | "list" | "prose" | "approval-queue";
+  | "activity-stream" | "list" | "prose" | "approval-queue"
+  | "scalar";
 
 export interface SurfaceStep {
   id: string;
@@ -233,6 +234,25 @@ export async function executeSurface(
         const { data, error } = await sb.rpc("list_pending_proposals", { p_limit: limit });
         if (error) throw new Error(`walk_pending_proposals: ${error.message}`);
         ctx[step.id] = (data as unknown[]) ?? [];
+        break;
+      }
+
+      case "aggregate": {
+        const source = String(p.source ?? "");
+        const fn = String(p.fn ?? "count");
+        const field = p.field ? String(p.field) : "";
+        const items = Array.isArray(ctx[source]) ? (ctx[source] as Record<string, unknown>[]) : [];
+        let value: number;
+        if (fn === "sum" && field) {
+          value = items.reduce((acc, it) => acc + (Number(resolvePath(it, field) ?? 0)), 0);
+        } else if (fn === "avg" && field) {
+          value = items.length > 0
+            ? items.reduce((acc, it) => acc + (Number(resolvePath(it, field) ?? 0)), 0) / items.length
+            : 0;
+        } else {
+          value = items.length; // default: count
+        }
+        ctx[step.id] = { value, fn, source, field };
         break;
       }
 

@@ -497,6 +497,31 @@ function handleApprovalSubmit(e) {
   </div>`;
 }
 
+function renderScalar(result: SurfaceResult): string {
+  // Find the scalar value — prefer explicit {value} shape, fall back to array length
+  let value: number | null = null;
+  let label = result.title;
+
+  for (const [stepId, val] of Object.entries(result.data)) {
+    if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+      const v = (val as Record<string, unknown>).value;
+      if (typeof v === "number") { value = v; label = label || stepId; break; }
+    }
+    if (typeof val === "number") { value = val; label = label || stepId; break; }
+    if (Array.isArray(val)) { value = val.length; label = label || stepId; break; }
+  }
+
+  if (value === null) return "<p style='color:#aaa;font-style:italic'>No scalar value.</p>";
+
+  const formatted = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
+  return `<div style="display:flex;align-items:center;justify-content:center;min-height:120px">
+    <div style="text-align:center">
+      <div style="font-size:52px;font-weight:700;color:#fff;line-height:1;font-family:monospace">${escapeHtml(formatted)}</div>
+      <div style="font-size:12px;color:#888;margin-top:8px;text-transform:uppercase;letter-spacing:.07em">${escapeHtml(label)}</div>
+    </div>
+  </div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":          return renderKanban(result);
@@ -506,6 +531,7 @@ function renderSurface(result: SurfaceResult): string {
     case "dashboard":       return renderDashboard(result);
     case "activity-stream": return renderActivityStream(result);
     case "approval-queue":  return renderApprovalQueue(result);
+    case "scalar":          return renderScalar(result);
     default:                return renderCardGrid(result);
   }
 }
