@@ -91,6 +91,7 @@ export async function executeSurface(
         if (p.node_type) q = q.eq("node_type", String(p.node_type));
         if (p.status)    q = q.eq("status", String(p.status));
         if (p.work_status) q = q.eq("work_status", String(p.work_status));
+        if (p.claimed_by) q = q.eq("claimed_by", String(p.claimed_by));
 
         const { data } = await q;
         ctx[step.id] = data ?? [];
