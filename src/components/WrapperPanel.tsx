@@ -138,6 +138,7 @@ interface NodeAction {
 function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: string }) {
   const [html, setHtml] = useState<string | null>(null);
   const [nodePayload, setNodePayload] = useState<Record<string, unknown> | null>(null);
+  const [nodeId, setNodeId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [role] = useState(() =>
@@ -147,20 +148,41 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
   );
 
   const load = useCallback(async () => {
-    const [htmlText, payloadResult] = await Promise.all([
+    const [htmlText, nodeResult] = await Promise.all([
       fetch(`/api/cx-surface/${ref_}?f=1`, { cache: "no-store" })
         .then(r => (r.ok ? r.text() : ""))
         .catch(() => ""),
       fetch(`/api/node/${ref_}`)
         .then(r => r.ok ? r.json() : null)
-        .then((d: { node?: { payload?: Record<string, unknown> } } | null) => d?.node?.payload ?? null)
+        .then((d: { node?: { id?: string; payload?: Record<string, unknown> } } | null) => d?.node ?? null)
         .catch(() => null),
     ]);
     setHtml(htmlText);
-    setNodePayload(payloadResult);
+    setNodePayload(nodeResult?.payload ?? null);
+    if (nodeResult?.id) setNodeId(nodeResult.id);
   }, [ref_]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Per-slot Realtime subscription — fires load() when events insert for this node
+  useEffect(() => {
+    if (!nodeId) return;
+    const sb = getBrowserSupabase();
+    const ch = sb
+      .channel(`viewer:slot:${nodeId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "context_os",
+          table: "events",
+          filter: `subject_node_id=eq.${nodeId}`,
+        },
+        () => { load(); }
+      )
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [nodeId, load]);
 
   const handleAction = useCallback(async (field: string, value: unknown) => {
     setActionError(null);
