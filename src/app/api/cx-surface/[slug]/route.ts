@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase-server";
 import { marked } from "marked";
-import { executeSurface, SurfaceSpec, SurfaceResult } from "@/lib/surface-executor";
+import { executeSurface, SurfaceSpec, SurfaceResult, ColumnEntry } from "@/lib/surface-executor";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +17,48 @@ function resolveField(item: Record<string, unknown>, field: string): unknown {
     cur = (cur as Record<string, unknown>)[p];
   }
   return cur;
+}
+
+// Column spec: surfaces may pass columns as plain strings or {key, label} objects
+type ColumnSpec = ColumnEntry;
+
+function normalizeCol(c: ColumnSpec): { key: string; label: string } {
+  if (typeof c === "string") return { key: c, label: c.split(".").pop() ?? c };
+  return { key: c.key, label: c.label ?? c.key };
+}
+
+// Semantic type inference — returns a render-mode string based on column name + value shape
+function getSemanticType(colKey: string, val: unknown): string {
+  if (Array.isArray(val)) return "tag-list";
+  if (typeof val !== "string" || val === "") return "text";
+
+  // Timestamp / date columns
+  if (
+    colKey.endsWith("_at") ||
+    colKey === "due_date" || colKey === "scheduled_at" ||
+    colKey.endsWith("_date")
+  ) return "date";
+
+  // Priority badge
+  if (colKey === "priority") return "priority-badge";
+
+  // Slug link (plan_slug, subject_slug, parent_slug, etc.) — but not "slug" itself
+  // "slug" is handled by the existing dedicated branch; *_slug covers the others
+  if (colKey !== "slug" && colKey.endsWith("_slug")) return "slug-link";
+
+  // Email
+  if (colKey === "email" && val.includes("@")) return "mailto";
+
+  // URL / website
+  if ((colKey === "url" || colKey === "website") && val.startsWith("http")) return "url-link";
+
+  // node_type label
+  if (colKey === "node_type") return "node-type";
+
+  // claimed_by agent badge
+  if (colKey === "claimed_by") return "agent-badge";
+
+  return "text";
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -35,17 +77,19 @@ function statusBadge(val: string): string {
   return `<span style="font-size:10px;padding:1px 6px;border-radius:3px;background:${color}22;color:${color};border:1px solid ${color}55;font-family:monospace">${escapeHtml(val)}</span>`;
 }
 
-function renderCard(item: Record<string, unknown>, columns?: string[]): string {
+function renderCard(item: Record<string, unknown>, columns?: ColumnSpec[]): string {
   const slug = escapeHtml(String(item.slug ?? ""));
   const content = escapeHtml(String(item.content ?? item.slug ?? "—"));
   const ws = String(item.work_status ?? "");
   const claimed = item.claimed_by ? `<div style="font-size:10px;color:#888;margin-top:3px">→ ${escapeHtml(String(item.claimed_by))}</div>` : "";
 
-  const extraFields = (columns ?? []).filter(c => !["slug","content","work_status","claimed_by"].includes(c));
-  const extras = extraFields.map(f => {
-    const val = resolveField(item, f);
+  const extraFields = (columns ?? [])
+    .map(normalizeCol)
+    .filter(c => !["slug","content","work_status","claimed_by"].includes(c.key));
+  const extras = extraFields.map(({ key, label }) => {
+    const val = resolveField(item, key);
     if (val == null || val === "") return "";
-    return `<div style="font-size:10px;color:#aaa;margin-top:2px"><span style="color:#666">${escapeHtml(f.split(".").pop() ?? f)}:</span> ${escapeHtml(String(val))}</div>`;
+    return `<div style="font-size:10px;color:#aaa;margin-top:2px"><span style="color:#666">${escapeHtml(label)}:</span> ${escapeHtml(String(val))}</div>`;
   }).join("");
 
   return `<div style="background:#242424;border:1px solid #3a3a3a;border-radius:4px;padding:9px 11px;cursor:pointer" onclick="window.location='/${slug}'">
@@ -116,6 +160,52 @@ function renderCardGrid(result: SurfaceResult): string {
   return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${cards}</div>`;
 }
 
+function renderSemanticCell(colKey: string, val: unknown): string {
+  const mode = getSemanticType(colKey, val);
+
+  switch (mode) {
+    case "tag-list": {
+      const tags = (val as unknown[]).map(t => {
+        const ts = escapeHtml(String(t));
+        return `<span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 5px;border-radius:3px;color:#d8d8dc;white-space:nowrap">${ts}</span>`;
+      }).join(" ");
+      return `<td style="padding:.3em .7em">${tags}</td>`;
+    }
+    case "date": {
+      const s = String(val);
+      return `<td style="padding:.3em .7em;font-size:12px;font-family:monospace;color:#aaa">${escapeHtml(s.slice(0, 10))}</td>`;
+    }
+    case "priority-badge": {
+      const s = String(val);
+      const color = s === "urgent" ? "#ef4444" : s === "high" ? "#f59e0b" : "#6b7280";
+      return `<td style="padding:.3em .7em"><span style="font-size:10px;padding:1px 6px;border-radius:3px;background:${color}22;color:${color};border:1px solid ${color}55;font-family:monospace">${escapeHtml(s)}</span></td>`;
+    }
+    case "slug-link": {
+      const s = escapeHtml(String(val));
+      return `<td style="padding:.3em .7em"><a href="/${s}" style="color:#0098fd;font-family:monospace;font-size:11px">${s}</a></td>`;
+    }
+    case "mailto": {
+      const s = escapeHtml(String(val));
+      return `<td style="padding:.3em .7em;font-size:12px"><a href="mailto:${s}" style="color:#0098fd">${s}</a></td>`;
+    }
+    case "url-link": {
+      const s = escapeHtml(String(val));
+      return `<td style="padding:.3em .7em;font-size:12px"><a href="${s}" target="_blank" rel="noopener" style="color:#0098fd">${s}</a></td>`;
+    }
+    case "node-type": {
+      const s = escapeHtml(String(val));
+      return `<td style="padding:.3em .7em"><span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 5px;color:#d8d8dc">${s}</span></td>`;
+    }
+    case "agent-badge": {
+      const s = escapeHtml(String(val));
+      return `<td style="padding:.3em .7em"><span style="font-size:10px;padding:1px 5px;border-radius:3px;background:#88888822;color:#888;border:1px solid #88888855;font-family:monospace">${s}</span></td>`;
+    }
+    default: {
+      return `<td style="padding:.3em .7em;font-size:12px">${escapeHtml(String(val))}</td>`;
+    }
+  }
+}
+
 function renderTable(result: SurfaceResult): string {
   let items: Record<string, unknown>[] = [];
   for (const val of Object.values(result.data)) {
@@ -129,15 +219,37 @@ function renderTable(result: SurfaceResult): string {
     return "<p style='color:#aaa;font-style:italic'>No items found.</p>";
   }
 
-  const cols = result.columns ?? ["slug","content","work_status","claimed_by"];
-  const heads = cols.map(c => `<th style="text-align:left;padding:.3em .7em;font-size:10px;color:#888;font-weight:500;border-bottom:1px solid #3a3a3a">${escapeHtml(c.split(".").pop() ?? c).toUpperCase()}</th>`).join("");
+  // Normalize column specs — accept both string and {key,label} object formats (P0 Bug 1)
+  const rawCols: ColumnSpec[] = result.columns ?? ["slug","content","work_status","claimed_by"];
+  const cols = rawCols.map(normalizeCol);
+
+  const heads = cols.map(({ label }) =>
+    `<th style="text-align:left;padding:.3em .7em;font-size:10px;color:#888;font-weight:500;border-bottom:1px solid #3a3a3a">${escapeHtml(label.split(".").pop() ?? label).toUpperCase()}</th>`
+  ).join("");
+
   const rows = items.map(item => {
-    const cells = cols.map(c => {
-      const val = resolveField(item, c);
-      const s = val == null ? "" : String(val);
-      if (c === "work_status" && s) return `<td style="padding:.3em .7em">${statusBadge(s)}</td>`;
-      if (c === "slug") return `<td style="padding:.3em .7em"><a href="/${escapeHtml(s)}" style="color:#0098fd;font-family:monospace;font-size:11px">${escapeHtml(s)}</a></td>`;
-      return `<td style="padding:.3em .7em;font-size:12px">${escapeHtml(s)}</td>`;
+    const cells = cols.map(({ key }) => {
+      // P0 Bug 2: try top-level field first, then fall back to payload.*
+      let val = resolveField(item, key);
+      if (val == null) {
+        const pl = (item.payload ?? {}) as Record<string, unknown>;
+        val = resolveField(pl, key);
+      }
+
+      // Existing dedicated branches for work_status and slug
+      if (key === "work_status") {
+        const s = val == null ? "" : String(val);
+        return s ? `<td style="padding:.3em .7em">${statusBadge(s)}</td>` : `<td style="padding:.3em .7em"></td>`;
+      }
+      if (key === "slug") {
+        const s = val == null ? "" : escapeHtml(String(val));
+        return `<td style="padding:.3em .7em"><a href="/${s}" style="color:#0098fd;font-family:monospace;font-size:11px">${s}</a></td>`;
+      }
+
+      if (val == null || val === "") return `<td style="padding:.3em .7em;font-size:12px"></td>`;
+
+      // Semantic type dispatch
+      return renderSemanticCell(key, val);
     }).join("");
     return `<tr style="border-bottom:1px solid #2a2a2a">${cells}</tr>`;
   }).join("");
@@ -415,7 +527,7 @@ export async function GET(
     const spec: SurfaceSpec = {
       title: typeof payload.title === "string" ? payload.title : undefined,
       render_shape: String(payload.render_shape ?? "card-grid") as SurfaceSpec["render_shape"],
-      columns: Array.isArray(payload.columns) ? payload.columns as string[] : undefined,
+      columns: Array.isArray(payload.columns) ? payload.columns as ColumnEntry[] : undefined,
       group_by: typeof payload.group_by === "string" ? payload.group_by : undefined,
       steps: payload.steps as SurfaceSpec["steps"],
     };

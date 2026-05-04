@@ -17,10 +17,13 @@ export interface SurfaceStep {
   params?: Record<string, unknown>;
 }
 
+// Column entries may be plain strings or {key, label} objects
+export type ColumnEntry = string | { key: string; label?: string };
+
 export interface SurfaceSpec {
   title?: string;
   render_shape: RenderShape;
-  columns?: string[];
+  columns?: ColumnEntry[];
   group_by?: string;
   steps: SurfaceStep[];
 }
@@ -29,7 +32,7 @@ export interface SurfaceResult {
   slug: string;
   title: string;
   render_shape: RenderShape;
-  columns?: string[];
+  columns?: ColumnEntry[];
   group_by?: string;
   data: Record<string, unknown>;
 }
