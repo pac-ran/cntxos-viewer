@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { getBrowserSupabase } from "@/lib/supabase-browser";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -169,6 +170,21 @@ export function NodeEditor({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Realtime subscription — auto-refresh when an event is inserted for this node
+  useEffect(() => {
+    if (!node?.id) return;
+    const supabase = getBrowserSupabase();
+    const channel = supabase
+      .channel(`node-editor-${node.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "context_os", table: "events", filter: `subject_node_id=eq.${node.id}` },
+        () => { load(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [node?.id, load]);
 
   // Cmd+S
   useEffect(() => {

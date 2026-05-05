@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { getBrowserSupabase } from "@/lib/supabase-browser";
 import ReactMarkdown from "react-markdown";
 import type { Plugin } from "unified";
 import type { Root, ListItem, Paragraph, Text } from "mdast";
@@ -114,6 +115,21 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
   }, [slug, load]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Realtime subscription — auto-refresh when an event is inserted for this node
+  useEffect(() => {
+    if (!node?.id) return;
+    const supabase = getBrowserSupabase();
+    const channel = supabase
+      .channel(`node-viewer-${node.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "context_os", table: "events", filter: `subject_node_id=eq.${node.id}` },
+        () => { load(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [node?.id, load]);
 
   // Build markdown components map with custom li for interactive slots
   const markdownComponents = useMemo(() => ({
