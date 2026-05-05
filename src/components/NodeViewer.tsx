@@ -8,6 +8,15 @@ import { visit } from "unist-util-visit";
 
 type WorkStatus = "inbox" | "in-progress" | "done";
 
+type LensKey = "cc" | "qc" | "nancy" | "randy";
+const LENS_KEYS: LensKey[] = ["cc", "qc", "nancy", "randy"];
+
+interface NodeAction {
+  field: string;
+  label: string;
+  value: string;
+}
+
 interface NodeRow {
   id: string;
   slug: string;
@@ -79,10 +88,53 @@ const remarkInteractiveSlots: Plugin<[], Root> = () => (tree: Root) => {
   });
 };
 
+function LensTabs({
+  lenses,
+  activeLens,
+  setActiveLens,
+}: {
+  lenses: Record<string, string>;
+  activeLens: LensKey;
+  setActiveLens: (k: LensKey) => void;
+}) {
+  const availableKeys = LENS_KEYS.filter(k => k in lenses);
+  if (availableKeys.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Tab row */}
+      <div className="flex gap-px">
+        {availableKeys.map(k => (
+          <button
+            key={k}
+            onClick={() => setActiveLens(k)}
+            className={`font-mono text-[10px] uppercase tracking-wide px-3 py-1 border transition-colors ${
+              activeLens === k
+                ? "bg-ink text-bg border-ink"
+                : "border-rule/30 text-dim hover:text-muted hover:border-rule/50"
+            }`}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+      {/* Active lens block */}
+      {lenses[activeLens] && (
+        <div className="border border-accent/30 bg-accent/5 px-3 py-2.5">
+          <p className="font-mono text-[11px] text-ink leading-relaxed whitespace-pre-wrap">
+            {lenses[activeLens]}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void }) {
   const [node, setNode] = useState<NodeRow | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [activeLens, setActiveLens] = useState<LensKey>("nancy");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/node/${slug}`);
@@ -111,6 +163,22 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
     });
     // Reload activity feed after posting
     load();
+  }, [slug, load]);
+
+  const handleAction = useCallback(async (action: NodeAction) => {
+    setActionLoading(action.label);
+    try {
+      const res = await fetch("/api/node-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, field: action.field, value: action.value }),
+      });
+      if (res.ok) {
+        await load();
+      }
+    } finally {
+      setActionLoading(null);
+    }
   }, [slug, load]);
 
   useEffect(() => { load(); }, [load]);
@@ -162,6 +230,18 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
     );
   }
 
+  const lenses =
+    node.payload.lenses != null &&
+    typeof node.payload.lenses === "object" &&
+    !Array.isArray(node.payload.lenses)
+      ? (node.payload.lenses as Record<string, string>)
+      : null;
+
+  const actions =
+    Array.isArray(node.payload.actions) && node.payload.actions.length > 0
+      ? (node.payload.actions as NodeAction[])
+      : null;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header strip */}
@@ -200,6 +280,15 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
       {/* Content + tags + activity */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-4">
 
+        {/* Lens tabs — shown above main content when payload.lenses is present */}
+        {lenses && (
+          <LensTabs
+            lenses={lenses}
+            activeLens={activeLens}
+            setActiveLens={setActiveLens}
+          />
+        )}
+
         {/* Content */}
         {node.content ? (
           <div className="prose-node">
@@ -210,6 +299,22 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
           </div>
         ) : (
           <div className="text-[13px] text-dim italic">no content</div>
+        )}
+
+        {/* Action buttons — shown below content when payload.actions is present */}
+        {actions && (
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-rule/20">
+            {actions.map((action, i) => (
+              <button
+                key={i}
+                onClick={() => handleAction(action)}
+                disabled={actionLoading === action.label}
+                className="font-mono text-[11px] border border-accent/60 px-3 py-1 text-accent hover:bg-accent hover:text-bg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading === action.label ? "…" : action.label}
+              </button>
+            ))}
+          </div>
         )}
 
         {/* Tags */}
