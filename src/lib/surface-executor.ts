@@ -8,7 +8,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
-  | "activity-stream" | "list" | "prose" | "approval-queue";
+  | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid";
 
 export interface SurfaceStep {
   id: string;
