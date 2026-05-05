@@ -427,6 +427,60 @@ function renderMermaid(result: SurfaceResult): string {
   return `<iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:400px;border:none;background:#1a1a1a" frameborder="0"></iframe>`;
 }
 
+function renderClusterState(result: SurfaceResult): string {
+  let data: Record<string, unknown> = {};
+  for (const val of Object.values(result.data)) {
+    if (val !== null && typeof val === "object" && !Array.isArray(val) && "sessions" in (val as object)) {
+      data = val as Record<string, unknown>;
+      break;
+    }
+  }
+
+  const sessions = (data.sessions as string[] | undefined) ?? [];
+  const lastCmd = (data.last_cmd as Record<string, unknown> | undefined) ?? {};
+  const spawnLog = (data.spawn_log as string[] | undefined) ?? [];
+
+  const sessionPills = sessions.length > 0
+    ? sessions.map(s => `<span style="font-family:monospace;font-size:11px;padding:3px 8px;border-radius:3px;background:#1e3a5f;color:#7dd3fc;border:1px solid #1e40af55">${escapeHtml(s)}</span>`).join(" ")
+    : `<span style="color:#555;font-style:italic;font-size:11px">none</span>`;
+
+  const cmdTs = lastCmd.timestamp ? escapeHtml(String(lastCmd.timestamp).replace("T", " ").replace("Z", " UTC")) : "—";
+  const cmdAction = lastCmd.action ? escapeHtml(String(lastCmd.action)) : "—";
+  const cmdAgent = lastCmd.agent ? `<span style="color:#f59e0b;font-family:monospace"> → ${escapeHtml(String(lastCmd.agent))}</span>` : "";
+
+  const logRows = spawnLog.length > 0
+    ? spawnLog.map(line => {
+        let parsed: Record<string, unknown> = {};
+        try { parsed = JSON.parse(line); } catch { /* raw line */ }
+        const ts = parsed.ts ? escapeHtml(String(parsed.ts).slice(11, 19)) : "";
+        const msg = parsed.msg ? escapeHtml(String(parsed.msg)) : escapeHtml(line.slice(0, 120));
+        const level = String(parsed.level ?? "");
+        const levelColor = level === "error" ? "#ef4444" : level === "warn" ? "#f59e0b" : "#555";
+        return `<div style="display:flex;gap:10px;padding:4px 0;border-bottom:1px solid #222;font-size:11px;font-family:monospace">
+          <span style="color:#444;flex-shrink:0;width:52px">${ts}</span>
+          ${level ? `<span style="color:${levelColor};flex-shrink:0;width:36px">${escapeHtml(level)}</span>` : ""}
+          <span style="color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${msg}</span>
+        </div>`;
+      }).join("")
+    : `<div style="color:#555;font-style:italic;font-size:11px;padding:8px 0">no log entries</div>`;
+
+  return `<div style="display:flex;flex-direction:column;gap:20px">
+    <div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #333">ACTIVE SESSIONS (${sessions.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${sessionPills}</div>
+    </div>
+    <div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #333">LAST COMMAND</div>
+      <div style="font-family:monospace;font-size:12px;color:#e5e5e5">${cmdAction}${cmdAgent}</div>
+      <div style="font-size:10px;color:#555;margin-top:3px">${cmdTs}</div>
+    </div>
+    <div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:4px;padding-bottom:5px;border-bottom:1px solid #333">SPAWN LOG (last ${spawnLog.length})</div>
+      ${logRows}
+    </div>
+  </div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":          return renderKanban(result);
@@ -438,6 +492,7 @@ function renderSurface(result: SurfaceResult): string {
     case "approval-queue":  return renderApprovalQueue(result);
     case "mermaid":         return renderMermaid(result);
     case "file-browser":    return renderFileBrowser(result);
+    case "cluster-state":   return renderClusterState(result);
     default:                return renderCardGrid(result);
   }
 }

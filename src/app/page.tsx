@@ -148,6 +148,26 @@ export default function LandingPage() {
             <div className="text-[11px] text-muted">Ingest a new contact into the substrate.</div>
           </button>
 
+          {/* Box surfaces */}
+          <div className="border border-rule/20 px-4 py-3">
+            <div className="text-[12px] font-semibold text-muted mb-2">Box</div>
+            <div className="flex flex-col gap-1">
+              {[
+                { slug: "s-box-scripts", label: "Scripts", desc: "cntxos/scripts — file browser" },
+                { slug: "s-box-cluster-state", label: "Cluster", desc: "tmux sessions + spawn log" },
+              ].map(({ slug, label, desc }) => (
+                <button
+                  key={slug}
+                  onClick={() => router.push(`/${slug}`)}
+                  className="text-left flex items-center gap-3 px-2 py-1.5 hover:bg-rule/10 transition-colors group"
+                >
+                  <span className="font-mono text-[11px] text-accent w-16 shrink-0">{label}</span>
+                  <span className="text-[10px] text-dim group-hover:text-muted transition-colors">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Manage — coming soon */}
           <div className="border border-rule/15 px-4 py-4 opacity-35 cursor-default">
             <div className="text-[14px] font-semibold text-muted mb-1">Manage</div>

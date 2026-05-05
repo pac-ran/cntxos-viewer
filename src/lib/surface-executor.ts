@@ -9,7 +9,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
   | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid"
-  | "file-browser";
+  | "file-browser" | "cluster-state";
 
 export interface SurfaceStep {
   id: string;
@@ -243,6 +243,33 @@ export async function executeSurface(
             })
         );
         ctx[step.id] = files.sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.name.localeCompare(b.name));
+        break;
+      }
+
+      case "read_cluster_state": {
+        const { readFile: rcsReadFile } = await import("fs/promises");
+        const { execSync } = await import("child_process");
+        const logLines = Number(p.log_lines ?? 10);
+
+        let sessions: string[] = [];
+        try {
+          const out = execSync('tmux list-sessions -F "#{session_name}" 2>/dev/null || true', { encoding: "utf8" }).trim();
+          sessions = out.split("\n").filter(Boolean);
+        } catch { sessions = []; }
+
+        let last_cmd: Record<string, unknown> = {};
+        try {
+          const raw = await rcsReadFile("/home/ubuntu/code/cntxos/.handoff/cluster-control-cmd.json", "utf8");
+          last_cmd = JSON.parse(raw.trim());
+        } catch { last_cmd = {}; }
+
+        let spawn_log: string[] = [];
+        try {
+          const logContent = await rcsReadFile("/home/ubuntu/code/cntxos/.handoff/.cc-patrol-cron.log", "utf8");
+          spawn_log = logContent.split("\n").filter(Boolean).slice(-logLines);
+        } catch { spawn_log = []; }
+
+        ctx[step.id] = { sessions, last_cmd, spawn_log };
         break;
       }
 
