@@ -360,6 +360,33 @@ function handleApprovalSubmit(e) {
   </div>`;
 }
 
+function renderMermaid(result: SurfaceResult): string {
+  // Extract diagram string from result.data (string or {diagram: string})
+  let diagram = "";
+  const raw = result.data.diagram;
+  if (typeof raw === "string") {
+    diagram = raw;
+  } else if (raw !== null && typeof raw === "object") {
+    const d = (raw as Record<string, unknown>).diagram;
+    if (typeof d === "string") diagram = d;
+  }
+
+  const safeDiagram = escapeHtml(diagram);
+  const srcdoc = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>body{margin:0;padding:12px;background:#1a1a1a}svg{max-width:100%;height:auto}</style>
+</head>
+<body>
+<div class="mermaid">${safeDiagram}</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true});</script>
+</body>
+</html>`.replace(/"/g, "&quot;");
+
+  return `<iframe srcdoc="${srcdoc}" sandbox="allow-scripts" style="width:100%;height:400px;border:none;background:#1a1a1a" frameborder="0"></iframe>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":          return renderKanban(result);
@@ -369,6 +396,7 @@ function renderSurface(result: SurfaceResult): string {
     case "dashboard":       return renderDashboard(result);
     case "activity-stream": return renderActivityStream(result);
     case "approval-queue":  return renderApprovalQueue(result);
+    case "mermaid":         return renderMermaid(result);
     default:                return renderCardGrid(result);
   }
 }
@@ -407,8 +435,18 @@ export async function GET(
   let contentHtml: string;
   const payload = n.payload ?? {};
 
+  // Mermaid render_shape — diagram lives directly in payload, no steps needed
+  if (payload.render_shape === "mermaid" && typeof payload.diagram === "string") {
+    const syntheticResult: SurfaceResult = {
+      slug,
+      title: typeof payload.title === "string" ? payload.title : slug,
+      render_shape: "mermaid",
+      data: { diagram: payload.diagram as string },
+    };
+    contentHtml = renderSurface(syntheticResult);
+
   // Walk-executor surface: execute steps and render by shape
-  if (Array.isArray(payload.steps) && (payload.steps as unknown[]).length > 0) {
+  } else if (Array.isArray(payload.steps) && (payload.steps as unknown[]).length > 0) {
     const urlParams: Record<string, string> = {};
     req.nextUrl.searchParams.forEach((v, k) => { if (k !== "f") urlParams[k] = v; });
 
