@@ -360,6 +360,46 @@ function handleApprovalSubmit(e) {
   </div>`;
 }
 
+function renderFileBrowser(result: SurfaceResult): string {
+  let items: Record<string, unknown>[] = [];
+  for (const val of Object.values(result.data)) {
+    if (Array.isArray(val) && val.length > 0) {
+      items = val as Record<string, unknown>[];
+      break;
+    }
+  }
+  if (items.length === 0) return "<p style='color:#aaa;font-style:italic'>No files found.</p>";
+
+  const rows = items.map(item => {
+    const name = escapeHtml(String(item.name ?? ""));
+    const desc = escapeHtml(String(item.description ?? ""));
+    const isDir = Boolean(item.is_dir);
+    const bytes = Number(item.size ?? 0);
+    const size = bytes > 0 ? (bytes >= 1024 ? `${Math.round(bytes / 1024)}KB` : `${bytes}B`) : "";
+    const mtime = escapeHtml(String(item.mtime ?? "").slice(0, 10));
+    const icon = isDir ? "▸" : "·";
+    const nameColor = isDir ? "#f59e0b" : "#7dd3fc";
+    return `<div style="display:grid;grid-template-columns:16px 1fr 60px 88px;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid #222">
+      <span style="color:#555;font-size:11px">${icon}</span>
+      <div>
+        <span style="font-family:monospace;font-size:12px;color:${nameColor}">${name}</span>
+        ${desc ? `<div style="font-size:11px;color:#555;margin-top:2px;font-family:sans-serif">${desc}</div>` : ""}
+      </div>
+      <span style="font-size:10px;color:#444;text-align:right;font-family:monospace">${escapeHtml(size)}</span>
+      <span style="font-size:10px;color:#444;text-align:right;font-family:monospace">${mtime}</span>
+    </div>`;
+  }).join("");
+
+  const header = `<div style="display:grid;grid-template-columns:16px 1fr 60px 88px;gap:8px;padding:4px 0 8px;border-bottom:2px solid #333;margin-bottom:2px">
+    <span></span>
+    <span style="font-size:9px;color:#555;font-weight:700;letter-spacing:.08em">NAME / DESCRIPTION</span>
+    <span style="font-size:9px;color:#555;font-weight:700;letter-spacing:.08em;text-align:right">SIZE</span>
+    <span style="font-size:9px;color:#555;font-weight:700;letter-spacing:.08em;text-align:right">MODIFIED</span>
+  </div>`;
+
+  return `<div style="font-family:monospace">${header}${rows}</div>`;
+}
+
 function renderMermaid(result: SurfaceResult): string {
   // Extract diagram string from result.data (string or {diagram: string})
   let diagram = "";
@@ -397,6 +437,7 @@ function renderSurface(result: SurfaceResult): string {
     case "activity-stream": return renderActivityStream(result);
     case "approval-queue":  return renderApprovalQueue(result);
     case "mermaid":         return renderMermaid(result);
+    case "file-browser":    return renderFileBrowser(result);
     default:                return renderCardGrid(result);
   }
 }

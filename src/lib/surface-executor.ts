@@ -8,7 +8,8 @@ import { getServerSupabase } from "@/lib/supabase-server";
 
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
-  | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid";
+  | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid"
+  | "file-browser";
 
 export interface SurfaceStep {
   id: string;
@@ -211,6 +212,37 @@ export async function executeSurface(
 
       case "filter": {
         ctx[step.id] = ctx[String(p.source ?? "")] ?? [];
+        break;
+      }
+
+      case "read_fs": {
+        const { readdir, readFile, stat } = await import("fs/promises");
+        const ALLOWLIST = ["/home/ubuntu/code/cntxos/scripts", "/home/ubuntu/code/cntxos/docs", "/home/ubuntu/code/viewer"];
+        const dirPath = String(p.path ?? "");
+        if (!ALLOWLIST.some(a => dirPath.startsWith(a))) {
+          ctx[step.id] = { error: "path not in allowlist" };
+          break;
+        }
+        const entries = await readdir(dirPath);
+        const files = await Promise.all(
+          entries
+            .filter(f => !f.startsWith("."))
+            .map(async (name) => {
+              const full = `${dirPath}/${name}`;
+              const st = await stat(full);
+              let description = "";
+              if (st.isFile()) {
+                try {
+                  const buf = await readFile(full, "utf8");
+                  const lines = buf.split("\n").filter(l => l.trim() && !/^#!/.test(l));
+                  const comment = lines.find(l => /^[#/]/.test(l));
+                  description = (comment ?? lines[0] ?? "").replace(/^[#/ *-]+/, "").trim().slice(0, 120);
+                } catch { description = ""; }
+              }
+              return { name, size: st.size, mtime: st.mtime.toISOString().slice(0, 10), is_dir: st.isDirectory(), description };
+            })
+        );
+        ctx[step.id] = files.sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.name.localeCompare(b.name));
         break;
       }
 
