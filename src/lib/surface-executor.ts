@@ -9,7 +9,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
   | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid"
-  | "file-browser" | "cluster-state";
+  | "file-browser" | "cluster-state" | "intercom-events";
 
 export interface SurfaceStep {
   id: string;
@@ -280,6 +280,43 @@ export async function executeSurface(
         const { data, error } = await sb.rpc("list_pending_proposals", { p_limit: limit });
         if (error) throw new Error(`walk_pending_proposals: ${error.message}`);
         ctx[step.id] = (data as unknown[]) ?? [];
+        break;
+      }
+
+      case "read_intercom_state": {
+        const { readFile: riReadFile, stat: riStat } = await import("fs/promises");
+        const logLines = Number(p.log_lines ?? 20);
+        const LOG_PATH = "/home/ubuntu/code/cntxos/.handoff/intercom-bridge.log";
+        const STATE_PATH = "/home/ubuntu/code/cntxos/.handoff/.intercom-bridge.state";
+
+        let stateAgeSeconds = -1;
+        try {
+          const st = await riStat(STATE_PATH);
+          stateAgeSeconds = Math.floor((Date.now() - st.mtimeMs) / 1000);
+        } catch { /* no state file */ }
+
+        const entries: Record<string, unknown>[] = [];
+        try {
+          const raw = await riReadFile(LOG_PATH, "utf8");
+          for (const line of raw.split("\n").filter(Boolean)) {
+            try { entries.push(JSON.parse(line)); } catch { /* skip bad lines */ }
+          }
+        } catch { /* no log yet */ }
+
+        const forwarded = entries.filter(e => e.status === "forwarded");
+        const recentForwarded = forwarded.slice(-logLines);
+        const recentErrors = entries.filter(e => e.status === "rest_error").slice(-5);
+        const lastForwardedAt = forwarded.length > 0
+          ? String((forwarded[forwarded.length - 1] as Record<string, unknown>).ts ?? "")
+          : "";
+
+        ctx[step.id] = {
+          state_age_seconds: stateAgeSeconds,
+          last_forwarded_at: lastForwardedAt,
+          forwarded_count: forwarded.length,
+          recent_forwarded: recentForwarded,
+          recent_errors: recentErrors,
+        };
         break;
       }
 

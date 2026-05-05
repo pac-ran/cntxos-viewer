@@ -481,19 +481,98 @@ function renderClusterState(result: SurfaceResult): string {
   </div>`;
 }
 
+function renderIntercomEvents(result: SurfaceResult): string {
+  let data: Record<string, unknown> = {};
+  for (const val of Object.values(result.data)) {
+    if (val !== null && typeof val === "object" && !Array.isArray(val) && "forwarded_count" in (val as object)) {
+      data = val as Record<string, unknown>;
+      break;
+    }
+  }
+
+  const stateAge = Number(data.state_age_seconds ?? -1);
+  const forwardedCount = Number(data.forwarded_count ?? 0);
+  const lastForwardedAt = String(data.last_forwarded_at ?? "");
+  const recentForwarded = (data.recent_forwarded as Record<string, unknown>[] | undefined) ?? [];
+  const recentErrors = (data.recent_errors as Record<string, unknown>[] | undefined) ?? [];
+
+  // Status pill
+  const stateAgeLabel = stateAge < 0 ? "no state" : stateAge < 300 ? `${stateAge}s ago` : `${Math.round(stateAge / 60)}m ago`;
+  const stateColor = stateAge < 0 ? "#6b7280" : stateAge < 300 ? "#22c55e" : stateAge < 1800 ? "#f59e0b" : "#ef4444";
+  const statusPill = `<span style="font-family:monospace;font-size:11px;padding:3px 8px;border-radius:3px;background:${stateColor}22;color:${stateColor};border:1px solid ${stateColor}55">state: ${escapeHtml(stateAgeLabel)}</span>`;
+
+  // Last forward
+  const lastFwdDisplay = lastForwardedAt
+    ? `<span style="font-size:11px;color:#888;font-family:monospace">${escapeHtml(lastForwardedAt.slice(0, 19).replace("T", " "))} UTC</span>`
+    : `<span style="font-size:11px;color:#555;font-style:italic">none yet</span>`;
+
+  // Recent forwarded rows
+  const fwdRows = recentForwarded.length > 0
+    ? [...recentForwarded].reverse().map(e => {
+        const ts = String(e.ts ?? "").slice(11, 19);
+        const eventId = String(e.event_id ?? "").slice(0, 8);
+        const occurredAt = String(e.occurred_at ?? "").slice(0, 16).replace("T", " ");
+        const chars = Number(e.chars ?? 0);
+        return `<div style="display:grid;grid-template-columns:52px 70px 1fr 50px;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #222;font-size:11px;font-family:monospace">
+          <span style="color:#444">${escapeHtml(ts)}</span>
+          <span style="color:#3b82f6">${escapeHtml(eventId)}…</span>
+          <span style="color:#aaa">${escapeHtml(occurredAt)}</span>
+          <span style="color:#555;text-align:right">${chars}ch</span>
+        </div>`;
+      }).join("")
+    : `<div style="color:#555;font-style:italic;font-size:11px;padding:8px 0">no forwarded events yet</div>`;
+
+  // Error rows
+  const errSection = recentErrors.length > 0
+    ? `<div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#ef4444;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid #3a2a2a">RECENT ERRORS (${recentErrors.length})</div>
+        ${recentErrors.map(e => {
+          const ts = String(e.ts ?? "").slice(11, 19);
+          const body = String(e.body ?? "").slice(0, 120);
+          return `<div style="font-size:10px;font-family:monospace;padding:4px 0;border-bottom:1px solid #2a2020;color:#ef4444"><span style="color:#444">${escapeHtml(ts)}</span>  ${escapeHtml(body)}</div>`;
+        }).join("")}
+      </div>`
+    : "";
+
+  return `<div style="display:flex;flex-direction:column;gap:20px">
+    <div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #333">BRIDGE STATUS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        ${statusPill}
+        <span style="font-size:10px;color:#555">${forwardedCount} forwarded total</span>
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:#555">last forward: ${lastFwdDisplay}</div>
+    </div>
+    <div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;margin-bottom:4px;padding-bottom:5px;border-bottom:1px solid #333">
+        FORWARDED TO RANDY (${recentForwarded.length} shown)
+      </div>
+      <div style="display:grid;grid-template-columns:52px 70px 1fr 50px;gap:8px;padding:3px 0 6px;border-bottom:1px solid #2a2a2a;margin-bottom:2px">
+        <span style="font-size:9px;color:#444;font-weight:700">TIME</span>
+        <span style="font-size:9px;color:#444;font-weight:700">EVENT ID</span>
+        <span style="font-size:9px;color:#444;font-weight:700">OCCURRED AT</span>
+        <span style="font-size:9px;color:#444;font-weight:700;text-align:right">SIZE</span>
+      </div>
+      ${fwdRows}
+    </div>
+    ${errSection}
+  </div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
-    case "kanban":          return renderKanban(result);
-    case "card-grid":       return renderCardGrid(result);
-    case "table":           return renderTable(result);
-    case "list":            return renderList(result);
-    case "dashboard":       return renderDashboard(result);
-    case "activity-stream": return renderActivityStream(result);
-    case "approval-queue":  return renderApprovalQueue(result);
-    case "mermaid":         return renderMermaid(result);
-    case "file-browser":    return renderFileBrowser(result);
-    case "cluster-state":   return renderClusterState(result);
-    default:                return renderCardGrid(result);
+    case "kanban":           return renderKanban(result);
+    case "card-grid":        return renderCardGrid(result);
+    case "table":            return renderTable(result);
+    case "list":             return renderList(result);
+    case "dashboard":        return renderDashboard(result);
+    case "activity-stream":  return renderActivityStream(result);
+    case "approval-queue":   return renderApprovalQueue(result);
+    case "mermaid":          return renderMermaid(result);
+    case "file-browser":     return renderFileBrowser(result);
+    case "cluster-state":    return renderClusterState(result);
+    case "intercom-events":  return renderIntercomEvents(result);
+    default:                 return renderCardGrid(result);
   }
 }
 
