@@ -559,6 +559,41 @@ function renderIntercomEvents(result: SurfaceResult): string {
   </div>`;
 }
 
+function renderBoxHealth(result: SurfaceResult): string {
+  let data: Record<string, unknown> = {};
+  for (const val of Object.values(result.data)) {
+    if (val !== null && typeof val === "object" && !Array.isArray(val) && "uptime" in (val as object)) {
+      data = val as Record<string, unknown>;
+      break;
+    }
+  }
+
+  const uptime = escapeHtml(String(data.uptime ?? "—"));
+  const disk = escapeHtml(String(data.disk ?? "—"));
+  const memory = escapeHtml(String(data.memory ?? "—"));
+  const errors = (data.recent_errors as string[] | undefined) ?? [];
+
+  const section = (label: string, content: string, color = "#555") =>
+    `<div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${escapeHtml(color)};margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #333">${label}</div>
+      ${content}
+    </div>`;
+
+  const mono = (s: string) =>
+    `<pre style="font-family:monospace;font-size:11px;color:#aaa;white-space:pre-wrap;word-break:break-all;background:#111;padding:8px;border:1px solid #2a2a2a">${s}</pre>`;
+
+  const errSection = errors.length > 0
+    ? section("RECENT ERRORS (last 1h)", errors.map(l => `<div style="font-family:monospace;font-size:10px;color:#ef4444;padding:3px 0;border-bottom:1px solid #2a2020">${escapeHtml(l)}</div>`).join(""), "#ef4444")
+    : section("RECENT ERRORS (last 1h)", `<div style="font-size:11px;color:#22c55e;font-style:italic">no errors</div>`, "#22c55e");
+
+  return `<div style="display:flex;flex-direction:column;gap:20px">
+    ${section("UPTIME", mono(uptime))}
+    ${section("DISK ( / )", mono(disk))}
+    ${section("MEMORY", mono(memory))}
+    ${errSection}
+  </div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":           return renderKanban(result);
@@ -572,6 +607,7 @@ function renderSurface(result: SurfaceResult): string {
     case "file-browser":     return renderFileBrowser(result);
     case "cluster-state":    return renderClusterState(result);
     case "intercom-events":  return renderIntercomEvents(result);
+    case "box-health":       return renderBoxHealth(result);
     default:                 return renderCardGrid(result);
   }
 }

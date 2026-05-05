@@ -156,6 +156,7 @@ export default function LandingPage() {
                 { slug: "s-box-scripts", label: "Scripts", desc: "cntxos/scripts — file browser" },
                 { slug: "s-box-cluster-state", label: "Cluster", desc: "tmux sessions + spawn log" },
                 { slug: "s-box-intercom-events", label: "Intercom", desc: "bridge status + forwarded events" },
+                { slug: "s-box-health", label: "Health", desc: "uptime, disk, memory, recent errors" },
               ].map(({ slug, label, desc }) => (
                 <button
                   key={slug}

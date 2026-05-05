@@ -9,7 +9,7 @@ import { getServerSupabase } from "@/lib/supabase-server";
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
   | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid"
-  | "file-browser" | "cluster-state" | "intercom-events";
+  | "file-browser" | "cluster-state" | "intercom-events" | "box-health";
 
 export interface SurfaceStep {
   id: string;
@@ -316,6 +316,25 @@ export async function executeSurface(
           forwarded_count: forwarded.length,
           recent_forwarded: recentForwarded,
           recent_errors: recentErrors,
+        };
+        break;
+      }
+
+      case "read_box_health": {
+        const { execSync: bhExecSync } = await import("child_process");
+        const run = (cmd: string): string => {
+          try { return bhExecSync(cmd, { encoding: "utf8", timeout: 5000 }).trim(); }
+          catch (e) { return `error: ${e instanceof Error ? e.message : String(e)}`; }
+        };
+        const uptime = run("uptime -p");
+        const disk = run("df -h /");
+        const memory = run("free -h");
+        const errors = run("journalctl --since='1 hour ago' --priority=err -n 10 --no-pager 2>/dev/null || true");
+        ctx[step.id] = {
+          uptime,
+          disk,
+          memory,
+          recent_errors: errors ? errors.split("\n").filter(Boolean) : [],
         };
         break;
       }
