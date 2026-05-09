@@ -863,48 +863,56 @@ export async function GET(
   const displayTitle = typeof payload.title === "string" ? payload.title : n.slug;
 
   const tags = (n.tags ?? [])
-    .map(t => `<span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 6px;color:#d8d8dc">${escapeHtml(t)}</span>`)
+    .map(t => `<span class="tag">${escapeHtml(t)}</span>`)
     .join(" ");
 
+  // Site tokens (matches cntxos.com globals.css). Cream paper + ink + amber +
+  // rule lines. Serif body, mono labels. Strong borders, real boxes —
+  // no more VS Code dark / hairline blending.
   const css = `
   .cxs *{box-sizing:border-box;margin:0;padding:0}
-  .cxs{background:#1a1a1a;color:#fff;font-family:system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.65;padding:18px 22px}
-  .cxs .header{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #3a3a3a}
-  .cxs .slug{font-family:monospace;font-size:13px;font-weight:700;color:#fff}
-  .cxs .surface-title{font-size:16px;font-weight:700;color:#fff;margin-bottom:4px}
-  .cxs .badges{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
-  .cxs .badge{font-family:monospace;font-size:9px;border:1px solid #3a3a3a;padding:1px 6px;color:#d8d8dc;text-transform:uppercase;letter-spacing:.05em}
-  .cxs .badge-canon{border-color:#166534;color:#4ade80}
-  .cxs .scope{font-family:monospace;font-size:9px;color:#aaaaaa;margin-top:4px}
-  .cxs .content{color:#fff}
-  .cxs .content h1,.cxs .content h2,.cxs .content h3{font-weight:600;margin:1.1em 0 .4em;line-height:1.3}
-  .cxs .content h1{font-size:1.15em}
-  .cxs .content h2{font-size:1.05em}
-  .cxs .content h3{font-size:1em}
-  .cxs .content p{margin:.6em 0}
+  .cxs{background:#F5F2E8;color:#1A1A1A;font-family:Georgia,'Source Serif 4',serif;font-size:17px;line-height:1.7;padding:24px 28px}
+  .cxs a{color:#C2410C}
+  .cxs a:hover{text-decoration:underline}
+
+  .cxs .header{margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #C2410C}
+  .cxs .surface-title{font-family:Georgia,'Source Serif 4',serif;font-size:28px;font-weight:700;color:#1A1A1A;line-height:1.2;margin-bottom:6px}
+  .cxs .slug{font-family:'JetBrains Mono','Courier New',monospace;font-size:12px;font-weight:600;color:#6B6558;letter-spacing:.05em}
+  .cxs .badges{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .cxs .badge{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;font-weight:700;border:1.5px solid #B8B09C;padding:3px 8px;color:#6B6558;text-transform:uppercase;letter-spacing:.1em;background:#fff}
+  .cxs .badge-canon{border-color:#C2410C;color:#C2410C;background:rgba(194,65,12,0.06)}
+  .cxs .scope{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;color:#6B6558;margin-top:8px;letter-spacing:.05em}
+
+  .cxs .content{color:#1A1A1A}
+  .cxs .content h1{font-family:Georgia,serif;font-size:1.7em;font-weight:700;color:#1A1A1A;margin:1.2em 0 .5em;line-height:1.25;border-bottom:2px solid #C2410C;padding-bottom:.25em}
+  .cxs .content h2{font-family:Georgia,serif;font-size:1.35em;font-weight:700;color:#1A1A1A;margin:1.2em 0 .4em;line-height:1.3}
+  .cxs .content h3{font-family:Georgia,serif;font-size:1.15em;font-weight:700;color:#C2410C;margin:1em 0 .35em;line-height:1.3;text-transform:uppercase;letter-spacing:.05em}
+  .cxs .content p{margin:.7em 0;color:#1A1A1A}
   .cxs .content p:first-child{margin-top:0}
-  .cxs .content strong{font-weight:600}
-  .cxs .content em{font-style:italic;color:#d8d8dc}
-  .cxs .content code{font-family:monospace;font-size:.85em;background:rgba(255,255,255,.07);padding:.1em .4em}
-  .cxs .content pre{background:rgba(255,255,255,.04);border:1px solid #3a3a3a;padding:.75em 1em;overflow-x:auto;margin:.8em 0}
-  .cxs .content pre code{background:none;padding:0}
-  .cxs .content ul,.cxs .content ol{padding-left:1.4em;margin:.6em 0}
-  .cxs .content li{margin:.2em 0}
-  .cxs .content blockquote{border-left:2px solid #3a3a3a;padding-left:1em;color:#d8d8dc;margin:.6em 0}
-  .cxs .content a{color:#0098fd}
-  .cxs .content hr{border:none;border-top:1px solid #3a3a3a;margin:1.2em 0}
-  .cxs .content table{width:100%;border-collapse:collapse;font-size:.9em;margin:.8em 0}
-  .cxs .content th,.cxs .content td{border:1px solid #3a3a3a;padding:.35em .7em;text-align:left}
-  .cxs .content th{font-weight:600;background:rgba(255,255,255,.04)}
-  .cxs .tags{margin-top:12px;display:flex;flex-wrap:wrap;gap:4px}`;
+  .cxs .content strong{font-weight:700;color:#1A1A1A}
+  .cxs .content em{font-style:italic;color:#6B6558}
+  .cxs .content code{font-family:'JetBrains Mono','Courier New',monospace;font-size:.88em;background:#fff;border:1px solid #B8B09C;color:#C2410C;padding:.1em .4em;border-radius:2px}
+  .cxs .content pre{background:#fff;border:1.5px solid #B8B09C;border-left:4px solid #C2410C;padding:1em 1.2em;overflow-x:auto;margin:1em 0;border-radius:2px}
+  .cxs .content pre code{background:none;border:none;padding:0;color:#1A1A1A}
+  .cxs .content ul,.cxs .content ol{padding-left:1.6em;margin:.8em 0}
+  .cxs .content li{margin:.3em 0;color:#1A1A1A}
+  .cxs .content blockquote{border-left:4px solid #C2410C;padding:.5em 1em;color:#6B6558;margin:1em 0;background:rgba(194,65,12,0.04)}
+  .cxs .content hr{border:none;border-top:2px solid #B8B09C;margin:1.5em 0}
+  .cxs .content table{width:100%;border-collapse:collapse;font-size:.95em;margin:1em 0;background:#fff;border:1.5px solid #B8B09C}
+  .cxs .content th,.cxs .content td{border:1px solid #B8B09C;padding:.5em .8em;text-align:left;color:#1A1A1A}
+  .cxs .content th{font-family:'JetBrains Mono','Courier New',monospace;font-size:.75em;font-weight:700;background:#F5F2E8;color:#6B6558;text-transform:uppercase;letter-spacing:.08em}
+  .cxs .content a{color:#C2410C;font-weight:500}
+
+  .cxs .tags{margin-top:18px;padding-top:12px;border-top:1px solid #B8B09C;display:flex;flex-wrap:wrap;gap:6px}
+  .cxs .tag{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;border:1px solid #B8B09C;padding:2px 8px;color:#6B6558;background:#fff;letter-spacing:.05em}`;
 
   const isSurface = Array.isArray(payload.steps);
   const headerTitle = isSurface && displayTitle !== n.slug
-    ? `<div class="surface-title">${escapeHtml(displayTitle)}</div><div class="slug" style="font-size:10px;color:#666;font-weight:400">${escapeHtml(n.slug)}</div>`
-    : `<div class="slug">${escapeHtml(n.slug)}</div>`;
+    ? `<div class="surface-title">${escapeHtml(displayTitle)}</div><div class="slug">${escapeHtml(n.slug)}</div>`
+    : `<div class="surface-title">${escapeHtml(n.slug)}</div>`;
 
   const shapeLabel = isSurface
-    ? `<span class="badge" style="border-color:#1e40af;color:#60a5fa">${escapeHtml(String(payload.render_shape ?? "surface"))}</span>`
+    ? `<span class="badge" style="border-color:#C2410C;color:#C2410C;background:rgba(194,65,12,0.06)">${escapeHtml(String(payload.render_shape ?? "surface"))}</span>`
     : "";
 
   const body = `

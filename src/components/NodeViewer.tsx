@@ -196,21 +196,25 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
           </button>
         </div>
         <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
-        {/* work_status — read-only indicator */}
-        <div className="flex gap-px">
-          {(["inbox", "in-progress", "done"] as WorkStatus[]).map(ws => (
-            <span
-              key={ws}
-              className={`font-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border ${
-                node.work_status === ws
-                  ? "bg-ink text-bg border-ink"
-                  : "border-rule/20 text-dim"
-              }`}
-            >
-              {STATUS_LABELS[ws]}
-            </span>
-          ))}
-        </div>
+        {/* work_status — only show for task nodes (per Randy 2026-05-09:
+             pills on document/principle/etc looked like content tabs and
+             did nothing; remove visual confusion). */}
+        {node.node_type === "task" && (
+          <div className="flex gap-px">
+            {(["inbox", "in-progress", "done"] as WorkStatus[]).map(ws => (
+              <span
+                key={ws}
+                className={`font-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border ${
+                  node.work_status === ws
+                    ? "bg-ink text-bg border-ink"
+                    : "border-rule/20 text-dim"
+                }`}
+              >
+                {STATUS_LABELS[ws]}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Content + tags + activity */}
