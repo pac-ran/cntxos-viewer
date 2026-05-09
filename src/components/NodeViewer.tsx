@@ -180,9 +180,12 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header strip — edit on LEFT (controls THIS pane), then identity */}
+      {/* Header strip — edit on LEFT (controls THIS pane), then identity.
+           Metadata (type / status) rendered as inline-text labels with prefix
+           (Randy 2026-05-09: bordered chips looked like buttons / clickable;
+           now clearly read-only metadata). */}
       <div className="shrink-0 border-b border-rule/30 px-5 py-3 flex flex-col gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={onEdit}
             className="text-[11px] border border-accent/60 px-2.5 py-0.5 text-accent hover:bg-accent hover:text-bg transition-colors"
@@ -190,9 +193,17 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
             edit
           </button>
           <span className="font-mono text-[13px] font-bold text-ink">{node.slug}</span>
-          <span className="font-mono text-[9px] border border-rule/40 px-1.5 py-0.5 text-muted uppercase tracking-wide">{node.node_type}</span>
-          <span className={`font-mono text-[9px] border px-1.5 py-0.5 uppercase tracking-wide ${node.status === "canon" ? "border-green-600/50 text-green-400" : "border-rule/30 text-muted"}`}>
-            {node.status}
+          <span className="font-mono text-[10px] text-muted">
+            <span className="text-dim">type:</span>{" "}
+            <span className={node.node_type === "task" ? "text-accent" : "text-ink"}>
+              {node.node_type}
+            </span>
+          </span>
+          <span className="font-mono text-[10px] text-muted">
+            <span className="text-dim">status:</span>{" "}
+            <span className={node.status === "canon" ? "text-green-500 font-semibold" : "text-ink"}>
+              {node.status}
+            </span>
           </span>
         </div>
         <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
