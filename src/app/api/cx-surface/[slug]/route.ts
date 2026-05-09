@@ -868,7 +868,7 @@ export async function GET(
 
   const css = `
   .cxs *{box-sizing:border-box;margin:0;padding:0}
-  .cxs{background:#1a1a1a;color:#fff;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.6;padding:16px 20px}
+  .cxs{background:#1a1a1a;color:#fff;font-family:system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.65;padding:18px 22px}
   .cxs .header{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #3a3a3a}
   .cxs .slug{font-family:monospace;font-size:13px;font-weight:700;color:#fff}
   .cxs .surface-title{font-size:16px;font-weight:700;color:#fff;margin-bottom:4px}
