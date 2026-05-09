@@ -70,6 +70,36 @@ function renderKanban(result: SurfaceResult): string {
     }
   }
 
+  // FIX 2026-05-09 (DL bug): if no pre-grouped data, auto-group from a flat array
+  // using surface.group_by, or smart-default to work_status if any node has it,
+  // else status. This lets surfaces declare render_shape="kanban" + group_by
+  // without needing an explicit group_by step in payload.steps.
+  if (!groups) {
+    let items: Record<string, unknown>[] = [];
+    for (const val of Object.values(result.data)) {
+      if (Array.isArray(val) && val.length > 0) {
+        items = val as Record<string, unknown>[];
+        break;
+      }
+    }
+    if (items.length > 0) {
+      let field = result.group_by;
+      if (!field) {
+        field = items.some((n) => n && (n as Record<string, unknown>).work_status != null)
+          ? "work_status"
+          : "status";
+      }
+      const built: Record<string, unknown[]> = {};
+      for (const item of items) {
+        const pl = (item.payload ?? {}) as Record<string, unknown>;
+        const key = String(resolveField(item, field) ?? resolveField(pl, field) ?? "other");
+        if (!built[key]) built[key] = [];
+        built[key].push(item);
+      }
+      groups = built;
+    }
+  }
+
   if (!groups) {
     return "<p style='color:#aaa;font-style:italic'>No grouped data found.</p>";
   }
@@ -594,6 +624,88 @@ function renderBoxHealth(result: SurfaceResult): string {
   </div>`;
 }
 
+// Added 2026-05-09 — DL findings B3 + B5: tree + timeline shapes had no
+// renderer in dispatcher and were falling through to renderCardGrid.
+
+function renderTimeline(result: SurfaceResult): string {
+  let items: Record<string, unknown>[] = [];
+  for (const val of Object.values(result.data)) {
+    if (Array.isArray(val) && val.length > 0) {
+      items = val as Record<string, unknown>[];
+      break;
+    }
+  }
+  if (items.length === 0) {
+    return "<p style='color:#aaa;font-style:italic'>No events found.</p>";
+  }
+  const tf = result.time_field || "occurred_at";
+  const rows = items.map((it) => {
+    const t = String(resolveField(it, tf) ?? "");
+    const tShort = t.replace("T", " ").slice(0, 19);
+    const kind = escapeHtml(String(it.event_kind ?? it.kind ?? "—"));
+    const actor = escapeHtml(String(it.actor ?? ""));
+    const op = escapeHtml(String(it.atomic_op ?? ""));
+    const phase = escapeHtml(String(it.phase ?? ""));
+    const outcome = escapeHtml(String(it.outcome ?? ""));
+    const subj = escapeHtml(String(it.subject_slug ?? it.subject_node_id ?? ""));
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #2a2a2a;font-size:12px">
+      <span style="color:#888;font-family:monospace;font-size:11px;width:130px;flex-shrink:0">${escapeHtml(tShort)}</span>
+      <span style="color:#60a5fa;font-weight:600;min-width:120px">${kind}</span>
+      ${actor ? `<span style="color:#a3e635">${actor}</span>` : ""}
+      ${op ? `<span style="color:#888;font-size:10px">${op}</span>` : ""}
+      ${phase ? `<span style="color:#666;font-size:10px">/${phase}</span>` : ""}
+      <span style="color:#aaa;flex:1;font-family:monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${subj}</span>
+      ${outcome ? `<span style="color:#fbbf24;font-size:10px">${outcome}</span>` : ""}
+    </div>`;
+  }).join("");
+  return `<div style="display:flex;flex-direction:column">${rows}</div>`;
+}
+
+function renderTree(result: SurfaceResult): string {
+  // Find a node array; group by scope depth + render nested
+  let items: Record<string, unknown>[] = [];
+  for (const val of Object.values(result.data)) {
+    if (Array.isArray(val) && val.length > 0) {
+      items = val as Record<string, unknown>[];
+      break;
+    }
+  }
+  if (items.length === 0) {
+    // Fall back: render a substrate-scope hierarchy stub
+    const root = String(result.root_scope ?? "root");
+    return `<p style='color:#aaa;font-style:italic'>No nodes loaded for scope <code>${escapeHtml(root)}</code>. Surface needs walk steps to fetch nodes.</p>`;
+  }
+  // Build scope → items map
+  const labelField = String(result.label_field || "content");
+  const byScope = new Map<string, Array<Record<string, unknown>>>();
+  for (const it of items) {
+    const scope = String(it.scope ?? "root");
+    if (!byScope.has(scope)) byScope.set(scope, []);
+    byScope.get(scope)!.push(it);
+  }
+  const scopes = [...byScope.keys()].sort();
+  const sections = scopes.map((scope) => {
+    const depth = scope.split(".").length - 1;
+    const indent = depth * 14;
+    const groupItems = byScope.get(scope)!;
+    const rows = groupItems.map((it) => {
+      const slug = escapeHtml(String(it.slug ?? ""));
+      const lbl = escapeHtml(String(resolveField(it, labelField) ?? it.slug ?? "—").slice(0, 80));
+      const nt = escapeHtml(String(it.node_type ?? ""));
+      return `<div style="padding:3px 0 3px ${indent + 14}px;font-size:12px;border-left:1px solid #2a2a2a;margin-left:${indent}px">
+        <span style="color:#60a5fa;font-family:monospace;font-size:11px">${slug}</span>
+        <span style="color:#666;font-size:10px;margin-left:6px">${nt}</span>
+        <div style="color:#aaa;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lbl}</div>
+      </div>`;
+    }).join("");
+    return `<div>
+      <div style="padding:6px 0 4px ${indent}px;font-family:monospace;font-size:11px;color:#888;font-weight:600">${escapeHtml(scope)}</div>
+      ${rows}
+    </div>`;
+  }).join("");
+  return `<div style="display:flex;flex-direction:column">${sections}</div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":           return renderKanban(result);
@@ -608,6 +720,8 @@ function renderSurface(result: SurfaceResult): string {
     case "cluster-state":    return renderClusterState(result);
     case "intercom-events":  return renderIntercomEvents(result);
     case "box-health":       return renderBoxHealth(result);
+    case "timeline":         return renderTimeline(result);
+    case "tree":             return renderTree(result);
     default:                 return renderCardGrid(result);
   }
 }
