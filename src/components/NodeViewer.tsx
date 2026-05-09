@@ -180,20 +180,20 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header strip */}
+      {/* Header strip — edit on LEFT (controls THIS pane), then identity */}
       <div className="shrink-0 border-b border-rule/30 px-5 py-3 flex flex-col gap-2">
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={onEdit}
+            className="text-[11px] border border-accent/60 px-2.5 py-0.5 text-accent hover:bg-accent hover:text-bg transition-colors"
+          >
+            edit
+          </button>
           <span className="font-mono text-[13px] font-bold text-ink">{node.slug}</span>
           <span className="font-mono text-[9px] border border-rule/40 px-1.5 py-0.5 text-muted uppercase tracking-wide">{node.node_type}</span>
           <span className={`font-mono text-[9px] border px-1.5 py-0.5 uppercase tracking-wide ${node.status === "canon" ? "border-green-600/50 text-green-400" : "border-rule/30 text-muted"}`}>
             {node.status}
           </span>
-          <button
-            onClick={onEdit}
-            className="ml-auto text-[11px] border border-accent/60 px-2.5 py-0.5 text-accent hover:bg-accent hover:text-bg transition-colors"
-          >
-            edit →
-          </button>
         </div>
         <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
         {/* work_status — only show for task nodes (per Randy 2026-05-09:

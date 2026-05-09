@@ -9,7 +9,14 @@ interface FrameSlot {
   ref: string;
 }
 
-const CONV_FRAME_STATE_ID = "cd315a53-396a-4ead-bf88-67da32083a3d";
+// Per-user resolution: the embedding workspace passes ?actor=<user>; the
+// /api/frame-state response returns the resolved conv_id so this component
+// subscribes to the right per-user node. Falls back to shared conv-frame-state
+// when no actor is provided.
+function readActor(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("actor");
+}
 
 function deriveLayout(count: number): "single" | "split" | "grid" {
   if (count <= 1) return "single";
@@ -20,26 +27,34 @@ function deriveLayout(count: number): "single" | "split" | "grid" {
 export function WrapperPanel() {
   const [slots, setSlots] = useState<FrameSlot[] | null>(null);
   const [live, setLive] = useState(false);
+  const [convId, setConvId] = useState<string | null>(null);
+  const [actor] = useState<string | null>(() => readActor());
 
-  // Initial load via server-side API (service_role, bypasses RLS)
+  // Initial load via server-side API (service_role, bypasses RLS) —
+  // returns slots + the resolved conv_id for the actor's frame-state
   useEffect(() => {
-    fetch("/api/frame-state")
+    const url = actor
+      ? `/api/frame-state?actor=${encodeURIComponent(actor)}`
+      : "/api/frame-state";
+    fetch(url)
       .then(r => r.json())
-      .then(({ slots: s }: { slots: FrameSlot[] }) => {
+      .then(({ slots: s, conv_id }: { slots: FrameSlot[]; conv_id?: string }) => {
         setSlots(Array.isArray(s) ? s : []);
+        if (conv_id) setConvId(conv_id);
       })
       .catch(() => setSlots([]));
-  }, []);
+  }, [actor]);
 
-  // Realtime subscription — anon key, conv-frame-state is public
+  // Realtime subscription — bound to the resolved per-user conv_id
   useEffect(() => {
+    if (!convId) return;
     const sb = getBrowserSupabase();
     const ch = sb
-      .channel("viewer:frame")
+      .channel(`viewer:frame:${convId}`)
       .on("broadcast", { event: "refresh" }, () => {/* belt+suspenders */})
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "context_os", table: "events", filter: `subject_node_id=eq.${CONV_FRAME_STATE_ID}` },
+        { event: "INSERT", schema: "context_os", table: "events", filter: `subject_node_id=eq.${convId}` },
         (payload) => {
           if ((payload.new as Record<string, unknown>)?.event_kind !== "frame-update") return;
           const evPayload = (payload.new as Record<string, unknown>).payload as { slots?: FrameSlot[]; mode?: string } | undefined;
@@ -54,7 +69,7 @@ export function WrapperPanel() {
       .subscribe((s) => setLive(s === "SUBSCRIBED"));
 
     return () => { sb.removeChannel(ch); };
-  }, []);
+  }, [convId]);
 
   const layout = deriveLayout(slots?.length ?? 0);
 
@@ -65,7 +80,16 @@ export function WrapperPanel() {
           className={`w-2 h-2 rounded-full shrink-0 ${live ? "bg-green-500 animate-pulse" : "bg-muted/30"}`}
           title={live ? "connected" : "connecting"}
         />
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">CC</span>
+        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
+          {actor ? `${actor.toUpperCase()} viewer` : "viewer"}
+        </span>
+
+        {/* Feedback buttons — RIGHT pane only (Randy 2026-05-09: belong here,
+            not in workspace top bar where they refresh both panes). Posts
+            user-feedback events on conv-frame-state-{actor}. */}
+        {actor && (
+          <FeedbackButtons actor={actor} />
+        )}
       </div>
 
       {slots === null && (
@@ -93,6 +117,48 @@ export function WrapperPanel() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Feedback buttons posted to substrate as user-feedback events (Randy 2026-05-09).
+// Cross-origin: the workspace shell is on cntxos.com; we hit cntxos.com's
+// /api/workspace/feedback so the cookie/auth flows through.
+function FeedbackButtons({ actor }: { actor: string }) {
+  const [last, setLast] = useState<string | null>(null);
+  const send = async (action: "like" | "hold" | "next") => {
+    setLast(action);
+    try {
+      await fetch("https://cntxos.com/api/workspace/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: actor, action }),
+        credentials: "include",
+      });
+    } catch {/* best-effort */}
+    setTimeout(() => setLast(null), 1500);
+  };
+  const items: Array<{a: "like"|"hold"|"next"; label: string}> = [
+    { a: "like", label: "👍 like" },
+    { a: "hold", label: "⏸ hold" },
+    { a: "next", label: "→ next" },
+  ];
+  return (
+    <div className="ml-auto flex items-center gap-2">
+      {items.map(({a, label}) => (
+        <button
+          key={a}
+          onClick={() => send(a)}
+          title={`feedback to driving agent: ${a}`}
+          className={`font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 border transition-colors ${
+            last === a
+              ? "bg-accent text-bg border-accent"
+              : "border-rule/40 text-muted hover:border-accent hover:text-accent"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
