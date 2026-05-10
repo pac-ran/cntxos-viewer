@@ -64,8 +64,9 @@ const ORANGE_SOFT = "#D9663A";
 const FONT_SANS =
   'var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif';
 
-// Recessed chat band — sits 1 step darker than primary content cream.
-const CHAT_BG = "#EEEAE0";
+// 2026-05-10 v2 design pass (Randy): chat matches viewer cream exactly —
+// no recession band. One cohesive cream surface across panels.
+const CHAT_BG = CREAM;
 
 function readActor(): string | null {
   if (typeof window === "undefined") return null;
@@ -134,10 +135,14 @@ export function ChatPane() {
     }
     setHydrated(true);
   }, []);
-  // Persist open/closed per actor.
+  // Persist open/closed per actor + notify the parent layout (pane/agent/page)
+  // via a custom event so it can drop the chat region from flex when closed.
   useEffect(() => {
     if (!actor || !hydrated) return;
     try { localStorage.setItem(`chat-open-${actor}`, chatOpen ? "1" : "0"); } catch { /* ignore */ }
+    try {
+      window.dispatchEvent(new CustomEvent("chat-open-change", { detail: { open: chatOpen } }));
+    } catch { /* ignore */ }
   }, [chatOpen, actor, hydrated]);
   const [model, setModel] = useState<DeepseekModelId>("deepseek-v4-flash");
   const [thinking, setThinking] = useState(false);
@@ -515,25 +520,27 @@ export function ChatPane() {
   // No focus-or-content magic. Aliased to "expanded" to keep downstream JSX small.
   const expanded = chatOpen;
 
-  // Closed state: a single deliberate reopen affordance. No magic.
+  // Closed state (Randy 2026-05-10 v2): no reserved band, no empty cream
+  // rectangle. Render a small floating "Open chat" button anchored bottom-right
+  // of the viewport so the viewer pane fills the full height. The parent
+  // (pane/agent/page.tsx) listens to the same localStorage key and removes
+  // the chat region from the layout entirely.
   if (!chatOpen) {
     return (
-      <div
-        className="flex items-center justify-between h-full px-3 transition-all duration-200 ease-out"
-        style={{ background: CHAT_BG, color: INK, fontFamily: FONT_SANS, borderTop: `1px solid ${RULE}80` }}
+      <button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-2 right-2 z-50 text-[12px] px-3 py-1.5 border transition-colors shadow-md"
+        style={{
+          borderColor: ORANGE,
+          color: ORANGE,
+          background: CREAM,
+          fontFamily: FONT_SANS,
+        }}
+        title="Open chat"
       >
-        <span className="text-[12px]" style={{ color: "#6b6450" }}>
-          chat closed
-        </span>
-        <button
-          type="button"
-          onClick={() => setChatOpen(true)}
-          className="text-[12px] px-3 py-1.5 border transition-colors"
-          style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
-        >
-          Open chat
-        </button>
-      </div>
+        Open chat
+      </button>
     );
   }
 
@@ -564,18 +571,24 @@ export function ChatPane() {
 
       {/* Body — sidebar (sessions) + main column (thread/input/controls) */}
       <div className="flex flex-1 min-h-0">
-      {/* Sidebar — sessions. */}
+      {/* Sidebar — sessions. v2 (Randy 2026-05-10): cream surface, orange
+          foreground accents. Right-edge orange separator for the divide. */}
       {expanded && (
       <div
         className="shrink-0 flex flex-col h-full transition-all"
-        style={{ width: sidebarWidth, background: ORANGE, color: CREAM }}
+        style={{
+          width: sidebarWidth,
+          background: CREAM,
+          color: ORANGE,
+          borderRight: `1px solid ${ORANGE}`,
+        }}
       >
         <div className="shrink-0 flex items-center justify-between px-1.5 py-1.5 gap-1">
           <button
             onClick={newSession}
             title="new chat"
-            className="w-6 h-6 flex items-center justify-center border text-[14px] leading-none hover:bg-white/10 transition-colors"
-            style={{ borderColor: CREAM, color: CREAM }}
+            className="w-6 h-6 flex items-center justify-center border text-[14px] leading-none transition-colors"
+            style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
           >
             +
           </button>
@@ -584,15 +597,15 @@ export function ChatPane() {
               onClick={() => setSidebarCollapsed(true)}
               title="collapse sidebar"
               className="w-6 h-6 flex items-center justify-center text-[12px] leading-none opacity-80 hover:opacity-100"
-              style={{ color: CREAM }}
+              style={{ color: ORANGE }}
             >
               ↤
             </button>
           )}
           {sidebarCollapsed && sessions.length > 0 && (
             <span
-              className="font-mono text-[11px] px-1 py-0.5 rounded"
-              style={{ background: ORANGE_DARK, color: CREAM }}
+              className="font-mono text-[11px] px-1 py-0.5 rounded border"
+              style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
               title={`${sessions.length} sessions`}
             >
               {sessions.length}
@@ -604,7 +617,7 @@ export function ChatPane() {
             onClick={() => setSidebarCollapsed(false)}
             title="expand sidebar"
             className="mx-auto mt-1 w-6 h-6 flex items-center justify-center text-[12px] leading-none opacity-80 hover:opacity-100"
-            style={{ color: CREAM }}
+            style={{ color: ORANGE }}
           >
             ↦
           </button>
@@ -614,7 +627,7 @@ export function ChatPane() {
             {sessions.length === 0 && (
               <div
                 className="text-[10px] italic opacity-70 px-1 py-2"
-                style={{ color: CREAM, fontFamily: FONT_SANS }}
+                style={{ color: "#6b6450", fontFamily: FONT_SANS }}
               >
                 no sessions yet
               </div>
@@ -643,15 +656,15 @@ export function ChatPane() {
                         if (e.key === "Escape") { setRenamingSlug(null); }
                       }}
                       className="w-full text-[11px] px-1.5 py-1 border bg-white/95 outline-none"
-                      style={{ color: INK, borderColor: ORANGE_DARK, fontFamily: FONT_SANS }}
+                      style={{ color: INK, borderColor: ORANGE, fontFamily: FONT_SANS }}
                     />
                   ) : (
                     <button
                       onClick={() => void switchSession(s.slug)}
                       className="w-full text-left text-[11px] px-1.5 py-1 transition-colors flex items-center gap-1"
                       style={{
-                        background: isActive ? ORANGE_DARK : "transparent",
-                        color: CREAM,
+                        background: isActive ? ORANGE : "transparent",
+                        color: isActive ? CREAM : INK,
                         fontFamily: FONT_SANS,
                       }}
                       title={s.title}
@@ -683,7 +696,7 @@ export function ChatPane() {
                   {menuOpenSlug === s.slug && (
                     <div
                       className="absolute right-0 top-full z-20 mt-0.5 border shadow-lg"
-                      style={{ background: CREAM, borderColor: ORANGE_DARK, color: INK, fontFamily: FONT_SANS }}
+                      style={{ background: CREAM, borderColor: ORANGE, color: INK, fontFamily: FONT_SANS }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
@@ -932,5 +945,6 @@ function ToolCallChip({ tc }: { tc: ToolCallRecord }) {
   );
 }
 
-// suppress unused warning for ORANGE_SOFT — reserved for future inactive style.
+// suppress unused warning for ORANGE_SOFT / ORANGE_DARK — reserved tokens.
 void ORANGE_SOFT;
+void ORANGE_DARK;
