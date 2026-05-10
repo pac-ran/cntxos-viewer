@@ -84,7 +84,10 @@ export function WrapperPanel() {
       {/* Header strip — diagnostic chrome (live dot + ACTOR label) is dev-only.
           FeedbackButtons stay always-visible for the operator. */}
       {(devMode || actor) && (
-        <div className="shrink-0 flex items-center gap-3 px-5 py-2.5 border-b border-rule/30">
+        <div
+          className="shrink-0 flex items-center gap-3 py-2.5 border-b border-rule/30"
+          style={{ paddingLeft: 20, paddingRight: 160 /* reserve space for workspace shell floating toolbar (layout presets + close) */ }}
+        >
           {devMode && (
             <>
               <span
@@ -100,11 +103,21 @@ export function WrapperPanel() {
             </>
           )}
 
-          {/* Feedback buttons — RIGHT pane only (Randy 2026-05-09: belong here,
-              not in workspace top bar where they refresh both panes). Posts
-              user-feedback events on conv-frame-state-{actor}. */}
+          {/* Feedback buttons — left-aligned next to the actor label.
+              Per Randy mockup t-cc-viewer-feedback-buttons-mockup (2026-05-10):
+              feedback cluster sits left of a vertical divider; layout/close cluster
+              renders to the right via the workspace shell's floating toolbar. */}
           {actor && (
-            <FeedbackButtons actor={actor} />
+            <>
+              <FeedbackButtons actor={actor} />
+              {/* Vertical divider — separates feedback (this iframe) from
+                  layout/close (workspace shell floating toolbar). */}
+              <span
+                aria-hidden
+                className="border-l border-rule/40"
+                style={{ alignSelf: "stretch", marginLeft: 4, marginRight: 4 }}
+              />
+            </>
           )}
         </div>
       )}
@@ -161,7 +174,7 @@ function FeedbackButtons({ actor }: { actor: string }) {
     { a: "next", label: "→ next" },
   ];
   return (
-    <div className="ml-auto flex items-center gap-2">
+    <div className="flex items-center gap-2">
       {items.map(({a, label}) => (
         <button
           key={a}
