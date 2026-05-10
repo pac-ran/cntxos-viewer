@@ -208,16 +208,7 @@ function SlotView({ slot, fill }: { slot: FrameSlot; fill: boolean }) {
   }
 
   if (slot.type === "walk") {
-    const anchor = slot.anchor_slug ?? "";
-    const src = `/api/cx-walk/${encodeURIComponent(slot.ref)}?anchor_slug=${encodeURIComponent(anchor)}`;
-    return (
-      <iframe
-        src={src}
-        className={`${cls} border-0`}
-        title={`slot:${slot.name}`}
-        sandbox="allow-scripts allow-same-origin"
-      />
-    );
+    return <WalkSlotView slot={slot} cls={cls} />;
   }
 
   if (slot.type === "stream") {
@@ -242,6 +233,28 @@ interface NodeAction {
   label: string;
   field: string;
   value: unknown;
+}
+
+// Walk slot — listens for cx-walk-rewalk window events (P2 of
+// pr-derive-walk-from-button) and force-reloads the iframe so the operator
+// sees mutated state instantly, without waiting on the 30s walk-cache TTL.
+function WalkSlotView({ slot, cls }: { slot: FrameSlot; cls: string }) {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const handler = () => setVersion(v => v + 1);
+    window.addEventListener("cx-walk-rewalk", handler as EventListener);
+    return () => window.removeEventListener("cx-walk-rewalk", handler as EventListener);
+  }, []);
+  const anchor = slot.anchor_slug ?? "";
+  const src = `/api/cx-walk/${encodeURIComponent(slot.ref)}?anchor_slug=${encodeURIComponent(anchor)}${version > 0 ? `&v=${version}` : ""}`;
+  return (
+    <iframe
+      src={src}
+      className={`${cls} border-0`}
+      title={`slot:${slot.name}`}
+      sandbox="allow-scripts allow-same-origin"
+    />
+  );
 }
 
 function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: string }) {

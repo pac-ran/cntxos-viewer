@@ -93,12 +93,117 @@ function interpolate(value: unknown, params: Record<string, string>): unknown {
 export async function executeSurface(
   spec: SurfaceSpec,
   slug: string,
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
+  options: { allowMutations?: boolean } = {}
 ): Promise<SurfaceResult> {
   const sb = getServerSupabase();
   const ctx: Record<string, unknown> = {};
 
+  // Interpolate template tokens in raw step strings (e.g. step.query for sql ops)
+  const interpolateString = (s: string): string =>
+    s.replace(/\$\{param:([^}]+)\}/g, (_, k) => params[k] ?? "")
+     .replace(/\{\{([^}]+)\}\}/g, (_, k) => params[String(k).trim()] ?? "");
+
   for (const step of spec.steps) {
+    // Mutation steps (phase=stake) only run when explicitly allowed by caller.
+    // GET render path (cx-walk/[slug]) leaves allowMutations=false, so reading
+    // a mutation walk via GET is read-only — no side effects.
+    if (step.phase === "stake") {
+      if (!options.allowMutations) continue;
+      const p = interpolate(step.params ?? {}, params) as Record<string, unknown>;
+      switch (step.op) {
+        case "sql": {
+          const rawQuery = String((step as unknown as { query?: string }).query ?? "");
+          const query = interpolateString(rawQuery);
+          if (!query) { ctx[step.id] = { error: "missing query" }; break; }
+          // Service-role client — no RLS, but we constrain to context_os.* writes
+          // and require a WHERE clause as a basic safety net.
+          if (!/^\s*(UPDATE|INSERT)\s+context_os\./i.test(query)) {
+            ctx[step.id] = { error: "sql op restricted to UPDATE/INSERT on context_os.*" };
+            break;
+          }
+          if (/^\s*UPDATE/i.test(query) && !/\bWHERE\b/i.test(query)) {
+            ctx[step.id] = { error: "UPDATE without WHERE rejected" };
+            break;
+          }
+          // No generic SQL RPC exists; we parse the supported mutation shape
+          // (UPDATE context_os.nodes SET <col>=<lit>[, <col>=NOW()] WHERE slug='X' AND ...)
+          // and execute via the typed service-role client.
+          // No /s flag (target es2017); collapse whitespace first.
+          const flatQuery = query.replace(/\s+/g, " ");
+          const m = /^\s*UPDATE\s+context_os\.nodes\s+SET\s+(.+?)\s+WHERE\s+slug\s*=\s*'([^']+)'(.*)$/i.exec(flatQuery);
+          if (!m) {
+            ctx[step.id] = { error: "sql op only supports UPDATE context_os.nodes SET ... WHERE slug='X' ..." };
+            break;
+          }
+          const setClause = m[1];
+          const targetSlug = m[2];
+          const tail = m[3] ?? "";
+          // Parse comma-separated SET assignments. Allow string literals, NOW(),
+          // numeric, NULL. Skip updated_at=NOW() (DB trigger or we don't care).
+          const updates: Record<string, unknown> = {};
+          for (const part of setClause.split(/,(?![^']*'(?:[^']*'[^']*')*[^']*$)/)) {
+            const a = /^\s*([a-z_][a-z0-9_]*)\s*=\s*(.+?)\s*$/i.exec(part);
+            if (!a) continue;
+            const col = a[1];
+            const valExpr = a[2].trim();
+            if (col === "updated_at") continue; // skip
+            const strLit = /^'((?:[^']|'')*)'$/.exec(valExpr);
+            if (strLit) updates[col] = strLit[1].replace(/''/g, "'");
+            else if (/^NULL$/i.test(valExpr)) updates[col] = null;
+            else if (/^-?\d+(\.\d+)?$/.test(valExpr)) updates[col] = Number(valExpr);
+            else { updates[col] = valExpr; }
+          }
+          // Optional extra WHERE conditions: AND node_type='task' AND work_status != 'done' etc.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let q = (sb.schema("context_os") as any)
+            .from("nodes")
+            .update(updates)
+            .eq("slug", targetSlug);
+          // Parse trailing AND clauses for typical equality / inequality / IN
+          const andClauses = tail.matchAll(/AND\s+([a-z_][a-z0-9_]*)\s*(=|!=|<>|IN)\s*(\([^)]*\)|'[^']*'|\d+)/gi);
+          for (const c of andClauses) {
+            const col = c[1];
+            const opr = c[2].toUpperCase();
+            const valTok = c[3];
+            if (opr === "IN") {
+              const inner = valTok.slice(1, -1);
+              const items = [...inner.matchAll(/'([^']*)'/g)].map(x => x[1]);
+              q = q.in(col, items);
+            } else {
+              const sLit = /^'((?:[^']|'')*)'$/.exec(valTok);
+              const v = sLit ? sLit[1].replace(/''/g, "'") : (/^-?\d+(\.\d+)?$/.test(valTok) ? Number(valTok) : valTok);
+              if (opr === "=") q = q.eq(col, v);
+              else q = q.neq(col, v);
+            }
+          }
+          const { data, error } = await q.select();
+          if (error) { ctx[step.id] = { error: error.message }; break; }
+          ctx[step.id] = { ok: true, data, updates, target_slug: targetSlug };
+          break;
+        }
+        case "post_event": {
+          const actor = String(p.actor ?? "viewer");
+          const nodeSlug = String(p.node_slug ?? p.slug ?? "");
+          const eventKind = String(p.event_kind ?? "walk-completed");
+          const outcome = p.outcome != null ? String(p.outcome) : null;
+          if (!nodeSlug) { ctx[step.id] = { error: "missing node_slug" }; break; }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data, error } = await (sb as any).rpc("admin_post_event", {
+            p_actor: actor,
+            p_slug: nodeSlug,
+            p_kind: eventKind,
+            p_payload: outcome ? { outcome } : {},
+          });
+          if (error) { ctx[step.id] = { error: error.message }; break; }
+          ctx[step.id] = { ok: true, data };
+          break;
+        }
+        default:
+          ctx[step.id] = { error: `unknown stake op: ${step.op}` };
+      }
+      continue;
+    }
     if (step.phase !== "walk") continue;
     const p = interpolate(step.params ?? {}, params) as Record<string, unknown>;
 

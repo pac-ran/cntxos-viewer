@@ -99,29 +99,60 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
     setEvents(evts ?? []);
   }, [slug]);
 
-  const postSlotEvent = useCallback(async (eventKind: string, value: string) => {
-    // Resolve actor from URL (?actor=randy) — falls back to "viewer" when
-    // standalone. Per bug t-bug-viewer-interactive-slots-no-event-emission
-    // (2026-05-10): events were posted as actor=viewer with event_kind=answer
-    // regardless of the slot's data-event, so substrate filters by
-    // actor='randy' returned nothing.
-    const actor =
-      typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search).get("actor") ?? "viewer"
-        : "viewer";
+  const postSlotEvent = useCallback(async (eventKind: string, value: string, suppressWalk: boolean) => {
+    // 1. Always post the answer event (legacy behavior).
     await fetch("/api/node/event", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         slug,
-        actor,
-        event_kind: eventKind,
-        payload: { value },
+        actor: "viewer",
+        event_kind: "answer",
+        payload: { [eventKind]: value },
       }),
     });
+
+    // 2. Opt-out walk derivation (P2 of pr-derive-walk-from-button).
+    // Try wf-${eventKind}-${node_type} then wf-${eventKind}. Fire if a walk
+    // exists AND the slot didn't set data-suppress-walk="true".
+    if (!suppressWalk && node) {
+      const candidates = [
+        `wf-${eventKind}-${node.node_type}`,
+        `wf-${eventKind}`,
+      ];
+      let firedSlug: string | null = null;
+      for (const candidate of candidates) {
+        try {
+          const actor = typeof window !== "undefined"
+            ? (new URLSearchParams(window.location.search).get("actor") ?? "viewer")
+            : "viewer";
+          const res = await fetch("/api/cx-walk/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              walk_slug: candidate,
+              anchor_slug: slug,
+              params: { viewer_actor: actor, value },
+            }),
+          });
+          if (res.status === 404) continue; // try next candidate
+          firedSlug = candidate;
+          break;
+        } catch {
+          // network error — try next candidate
+        }
+      }
+      // 3. Dispatch instant rewalk signal so any walk slot listening reloads.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("cx-walk-rewalk", {
+          detail: { near: firedSlug ?? slug, anchor_slug: slug, event_kind: eventKind },
+        }));
+      }
+    }
+
     // Reload activity feed after posting
     load();
-  }, [slug, load]);
+  }, [slug, load, node]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -147,17 +178,19 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
       const eventKind = (props as Record<string, unknown>)["data-event"] as string | undefined;
       const value = (props as Record<string, unknown>)["data-value"] as string | undefined;
       const label = (props as Record<string, unknown>)["data-label"] as string | undefined;
+      const suppressWalk = (props as Record<string, unknown>)["data-suppress-walk"] === "true";
 
       if (eventKind && value) {
         // Interactive slot — render as a checkbox button
         return (
-          <li className="list-none flex items-center gap-2 py-1">
+          <li className="list-none flex items-center gap-2 py-1" data-suppress-walk={suppressWalk ? "true" : undefined}>
             <input
               type="checkbox"
               className="cursor-pointer accent-accent w-4 h-4"
+              data-suppress-walk={suppressWalk ? "true" : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                postSlotEvent(eventKind, value);
+                postSlotEvent(eventKind, value, suppressWalk);
               }}
               readOnly
             />
