@@ -944,12 +944,8 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
             <style dangerouslySetInnerHTML={{ __html: ".chat-ta-mobile::placeholder { color: #3a342a; opacity: 0.85; }" }} />
           )}
           <button
-            type="button"
             onClick={() => void send()}
-            onTouchEnd={(e) => { e.preventDefault(); void send(); }}
-            /* Mobile keyboard fix mirror: on mobile only disable while streaming
-               OR while draft is empty. !actor gate stays in send() handler. */
-            disabled={mobile ? (streaming || !draft.trim()) : (streaming || !draft.trim() || !actor)}
+            disabled={streaming || !draft.trim() || !actor}
             className="font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 border transition-colors disabled:opacity-40"
             style={
               streaming || !draft.trim()
