@@ -100,14 +100,23 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
   }, [slug]);
 
   const postSlotEvent = useCallback(async (eventKind: string, value: string) => {
+    // Resolve actor from URL (?actor=randy) — falls back to "viewer" when
+    // standalone. Per bug t-bug-viewer-interactive-slots-no-event-emission
+    // (2026-05-10): events were posted as actor=viewer with event_kind=answer
+    // regardless of the slot's data-event, so substrate filters by
+    // actor='randy' returned nothing.
+    const actor =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("actor") ?? "viewer"
+        : "viewer";
     await fetch("/api/node/event", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         slug,
-        actor: "viewer",
-        event_kind: "answer",
-        payload: { [eventKind]: value },
+        actor,
+        event_kind: eventKind,
+        payload: { value },
       }),
     });
     // Reload activity feed after posting
