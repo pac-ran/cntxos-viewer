@@ -4,6 +4,7 @@ import { verifyOperatorToken } from "@/lib/auth-token";
 // GET-only routes — no write capability, pass through
 const PUBLIC_API_PATHS = [
   "/api/cx-surface/",
+  "/api/cx-walk/",
   "/api/cx-walk-events",
   "/api/cx-walk-stream/",
   "/api/frame-state",

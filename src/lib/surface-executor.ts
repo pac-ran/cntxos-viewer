@@ -36,6 +36,37 @@ export interface SurfaceResult {
   data: Record<string, unknown>;
 }
 
+// Module-level walk-result cache (P1 of pr-walk-slot-type convergence build).
+// CONCESSION: keyed by (walk_slug, anchor_slug, time-bucket) instead of the
+// proper (walk_slug, anchor_slug, max(events.occurred_at) for dependent
+// subjects). Time-bucketed cache invalidates every WALK_CACHE_TTL_MS regardless
+// of substrate state — so a write to a dependent subject won't bust the cache,
+// only the bucket roll will. Revisit in P2/P3 when reactive: true polling and
+// dependency tracking land. See pr-walk-slot-type for the canonical design.
+const WALK_CACHE_TTL_MS = 30_000;
+const walkCache = new Map<string, { result: SurfaceResult; expiresAt: number }>();
+
+export function getCachedWalk(key: string): SurfaceResult | null {
+  const hit = walkCache.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.expiresAt) {
+    walkCache.delete(key);
+    return null;
+  }
+  return hit.result;
+}
+
+export function setCachedWalk(key: string, result: SurfaceResult): void {
+  walkCache.set(key, { result, expiresAt: Date.now() + WALK_CACHE_TTL_MS });
+}
+
+export function walkCacheKey(walkSlug: string, anchorSlug: string): string {
+  // Bucket Date.now() to WALK_CACHE_TTL_MS so identical (walk, anchor) pairs
+  // collapse onto the same key within a bucket.
+  const bucket = Math.floor(Date.now() / WALK_CACHE_TTL_MS);
+  return `${walkSlug}::${anchorSlug}::${bucket}`;
+}
+
 // Resolve dotted path: "payload.status" → item.payload.status
 function resolvePath(obj: Record<string, unknown>, path: string): unknown {
   return path.split(".").reduce<unknown>((acc, key) => {
