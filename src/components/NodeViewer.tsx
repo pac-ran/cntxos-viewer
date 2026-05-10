@@ -184,29 +184,29 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
            Metadata (type / status) rendered as inline-text labels with prefix
            (Randy 2026-05-09: bordered chips looked like buttons / clickable;
            now clearly read-only metadata). */}
-      <div className="shrink-0 border-b border-rule/30 px-5 py-3 flex flex-col gap-2">
+      <div className="shrink-0 border-b border-rule px-5 py-3 flex flex-col gap-2">
         <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={onEdit}
-            className="text-[11px] border border-accent/60 px-2.5 py-0.5 text-accent hover:bg-accent hover:text-bg transition-colors"
+            className="text-[12px] font-semibold border border-accent px-3 py-1 text-accent hover:bg-accent hover:text-bg transition-colors"
           >
             edit
           </button>
           <span className="font-mono text-[13px] font-bold text-ink">{node.slug}</span>
-          <span className="font-mono text-[10px] text-muted">
+          <span className="text-[11px] text-muted">
             <span className="text-dim">type:</span>{" "}
             <span className={node.node_type === "task" ? "text-accent" : "text-ink"}>
               {node.node_type}
             </span>
           </span>
-          <span className="font-mono text-[10px] text-muted">
+          <span className="text-[11px] text-muted">
             <span className="text-dim">status:</span>{" "}
-            <span className={node.status === "canon" ? "text-green-500 font-semibold" : "text-ink"}>
+            <span className={node.status === "canon" ? "text-green-700 font-semibold" : "text-ink"}>
               {node.status}
             </span>
           </span>
         </div>
-        <div className="font-mono text-[9px] text-dim">{String(node.scope)}</div>
+        <div className="font-mono text-[11px] text-dim">{String(node.scope)}</div>
         {/* work_status — only show for task nodes (per Randy 2026-05-09:
              pills on document/principle/etc looked like content tabs and
              did nothing; remove visual confusion). */}
@@ -215,7 +215,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
             {(["inbox", "in-progress", "done"] as WorkStatus[]).map(ws => (
               <span
                 key={ws}
-                className={`font-mono text-[9px] uppercase tracking-wide px-2.5 py-1 border ${
+                className={`font-mono text-[11px] uppercase tracking-wide px-2.5 py-1 border ${
                   node.work_status === ws
                     ? "bg-ink text-bg border-ink"
                     : "border-rule/20 text-dim"
@@ -249,7 +249,7 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
             {node.tags.map(tag => (
               <span
                 key={tag}
-                className="font-mono text-[10px] border border-rule/30 px-1.5 py-0.5 text-muted"
+                className="font-mono text-[11px] border border-rule/60 px-1.5 py-0.5 text-muted"
               >
                 {tag}
               </span>
@@ -260,10 +260,10 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
         {/* Activity feed */}
         {events.length > 0 && (
           <div className="border-t border-rule/20 pt-3">
-            <div className="text-[10px] uppercase tracking-widest text-dim mb-2">activity</div>
+            <div className="text-[11px] uppercase tracking-widest text-dim mb-2">activity</div>
             <div className="flex flex-col gap-1.5">
               {events.map((ev, i) => (
-                <div key={i} className="flex items-baseline gap-2 font-mono text-[10px]">
+                <div key={i} className="flex items-baseline gap-2 font-mono text-[11px]">
                   <span className="text-dim shrink-0">
                     {new Date(ev.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>

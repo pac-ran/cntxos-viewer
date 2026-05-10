@@ -73,14 +73,14 @@ export default function AgentPanePage() {
   return (
     <div className="flex flex-col h-screen" style={{ background: CONTENT_BG }}>
       <div
-        className="flex-1 min-h-0 overflow-hidden"
+        className={`${chatOpen ? "flex-1" : "flex-1"} min-h-0 overflow-hidden`}
         style={{ background: CONTENT_BG }}
       >
         <WrapperPanel />
       </div>
       {chatOpen && (
         <div
-          className="flex-[2] min-h-0 overflow-hidden border-t"
+          className="flex-1 min-h-0 overflow-hidden border-t"
           style={{ borderColor: `${RULE}80` }}
         >
           <ChatPane />

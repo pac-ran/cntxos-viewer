@@ -785,7 +785,7 @@ export function ChatPane() {
 
         {/* Controls strip — BELOW input. Operator-only chrome (model picker,
             thinking toggle, ctx tokens, session cost). Hidden in user mode. */}
-        {devMode && expanded && (
+        {expanded && (
         <div
           className="shrink-0 flex items-center gap-3 px-3 h-7 border-t font-mono text-[10px]"
           style={{ borderColor: `${RULE}80`, background: CREAM }}

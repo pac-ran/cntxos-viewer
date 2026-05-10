@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-bg: #1a1a1a;
-  --color-ink: #ffffff;
-  --color-muted: #d8d8dc;
-  --color-dim: #aaaaaa;
-  --color-rule: #3a3a3a;
-  --color-accent: #0098fd;
-  --color-amber: #d97706;
-  --font-sans: var(--font-inter), system-ui, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  --color-bg: #F5F2E8;          /* cream */
+  --color-ink: #1A1A1A;          /* ink (dark text on cream) */
+  --color-muted: #6B5F4A;        /* darker muted that reads on cream */
+  --color-dim: #9A8E78;          /* lighter dim on cream */
+  --color-rule: #B8B09C;         /* canonical rule */
+  --color-accent: #C2400C;       /* cntx orange (was blue) */
+  --color-amber: #C2400C;        /* same orange — formerly d97706 */
+  --color-dark: #320808;         /* dark brown for "user space" / agent viewer wrapper only */
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Courier New', monospace;
 }
 
 html, body {
@@ -21,7 +22,7 @@ html, body {
 }
 
 /* Markdown content in NodeViewer */
-.prose-node { font-size: 14px; line-height: 1.75; color: var(--color-ink); }
+.prose-node { font-size: 14px; line-height: 1.75; color: var(--color-ink); font-family: var(--font-sans); }
 .prose-node h1,.prose-node h2,.prose-node h3 { font-weight: 600; margin: 1.25em 0 0.5em; line-height: 1.3; }
 .prose-node h1 { font-size: 1.25em; }
 .prose-node h2 { font-size: 1.1em; }
@@ -30,8 +31,8 @@ html, body {
 .prose-node p:first-child { margin-top: 0; }
 .prose-node strong { font-weight: 600; }
 .prose-node em { font-style: italic; color: var(--color-muted); }
-.prose-node code { font-family: var(--font-mono); font-size: 0.85em; background: rgba(255,255,255,0.07); padding: 0.1em 0.4em; border-radius: 2px; }
-.prose-node pre { background: rgba(255,255,255,0.04); border: 1px solid var(--color-rule); padding: 0.75em 1em; overflow-x: auto; margin: 1em 0; }
+.prose-node code { font-family: var(--font-mono); font-size: 0.85em; background: rgba(0,0,0,0.06); padding: 0.1em 0.4em; border-radius: 2px; }
+.prose-node pre { font-family: var(--font-mono); background: rgba(0,0,0,0.04); border: 1px solid var(--color-rule); padding: 0.75em 1em; overflow-x: auto; margin: 1em 0; }
 .prose-node pre code { background: none; padding: 0; }
 .prose-node ul,.prose-node ol { padding-left: 1.5em; margin: 0.75em 0; }
 .prose-node li { margin: 0.25em 0; }
@@ -40,4 +41,4 @@ html, body {
 .prose-node hr { border: none; border-top: 1px solid var(--color-rule); margin: 1.5em 0; }
 .prose-node table { width: 100%; border-collapse: collapse; font-size: 0.9em; margin: 1em 0; }
 .prose-node th,.prose-node td { border: 1px solid var(--color-rule); padding: 0.4em 0.75em; text-align: left; }
-.prose-node th { font-weight: 600; background: rgba(255,255,255,0.04); }
+.prose-node th { font-weight: 600; background: rgba(0,0,0,0.04); }

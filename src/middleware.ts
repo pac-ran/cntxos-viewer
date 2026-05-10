@@ -9,6 +9,21 @@ const PUBLIC_API_PATHS = [
   "/api/frame-state",
   "/api/node/session-randy",
   "/api/search",
+  // Broker chat: actor-scoped DeepSeek SSE proxy. POST-only. The actor in
+  // the request body keys persistence; no cross-actor leakage. Same-origin
+  // from viewer iframe; no cookie required so the iframe Just Works.
+  "/api/broker/chat",
+  // Broker sessions: per-actor session list + create/fork/rename/archive.
+  // Mutations are actor-scoped and slug-prefixed; same trust model as chat.
+  "/api/broker/sessions",
+  "/api/broker/messages",
+  // LEFT-pane CRUD (Randy 2026-05-09): create/update/delete/search.
+  // Same trust model as broker chat — same-origin from viewer iframe;
+  // input is regex-validated and routed through SECURITY DEFINER RPCs.
+  "/api/node/search",
+  "/api/node/create",
+  "/api/node/update",
+  "/api/node/delete",
 ];
 
 function isPublicApi(pathname: string): boolean {

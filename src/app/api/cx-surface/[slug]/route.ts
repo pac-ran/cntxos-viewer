@@ -166,7 +166,7 @@ function renderTable(result: SurfaceResult): string {
       const val = resolveField(item, c);
       const s = val == null ? "" : String(val);
       if (c === "work_status" && s) return `<td style="padding:.3em .7em">${statusBadge(s)}</td>`;
-      if (c === "slug") return `<td style="padding:.3em .7em"><a href="/${escapeHtml(s)}" style="color:#0098fd;font-family:monospace;font-size:11px">${escapeHtml(s)}</a></td>`;
+      if (c === "slug") return `<td style="padding:.3em .7em"><a href="/${escapeHtml(s)}" style="color:#C2400C;font-family:monospace;font-size:11px">${escapeHtml(s)}</a></td>`;
       return `<td style="padding:.3em .7em;font-size:12px">${escapeHtml(s)}</td>`;
     }).join("");
     return `<tr style="border-bottom:1px solid #2a2a2a">${cells}</tr>`;
@@ -327,7 +327,7 @@ function renderApprovalQueue(result: SurfaceResult): string {
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:#e5e5e5;margin-bottom:3px">${actionSlug}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span style="font-family:monospace;font-size:10px;color:#0098fd">${agent}</span>
+          <span style="font-family:monospace;font-size:10px;color:#C2400C">${agent}</span>
           <span style="font-size:10px;color:#555">${ts}</span>
           ${expires}
         </div>
@@ -726,14 +726,208 @@ function renderSurface(result: SurfaceResult): string {
   }
 }
 
+// Editor render shape — read-only HTML parity of NodeViewer.tsx.
+// Selected via ?shape=editor. Emits a self-contained HTML document styled
+// with cream/ink/amber tokens matching the existing cx-surface tokens.
+// (Added 2026-05-09 — broker-eats-Next.js architecture step 1.)
+async function renderEditorShape(
+  sb: ReturnType<typeof getServerSupabase>,
+  slug: string,
+  fragment: boolean,
+): Promise<NextResponse> {
+  const { data: node, error } = await sb
+    .schema("context_os")
+    .from("nodes")
+    .select("id, slug, node_type, status, work_status, content, tags, scope, payload, visibility")
+    .eq("slug", slug)
+    .single();
+
+  if (error || !node) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  const n = node as {
+    id: string;
+    slug: string;
+    node_type: string;
+    status: string;
+    work_status: string;
+    content: string | null;
+    tags: string[] | null;
+    scope: string;
+    payload: Record<string, unknown>;
+  };
+
+  // Fetch activity events using the same pattern as /api/node/[slug]
+  let events: Array<{
+    event_kind?: string;
+    actor?: string;
+    occurred_at?: string;
+    outcome?: string | null;
+  }> = [];
+  const { data: rpcData } = await sb
+    .schema("context_os")
+    .rpc("node_activity", { p_node_slug: slug, p_limit: 5 });
+  if (Array.isArray(rpcData)) {
+    events = rpcData as typeof events;
+  } else {
+    const { data: evDirect } = await sb
+      .schema("context_os")
+      .from("events")
+      .select("event_kind,actor,occurred_at,outcome")
+      .eq("subject_node_id", n.id)
+      .order("occurred_at", { ascending: false })
+      .limit(5);
+    events = (evDirect ?? []) as typeof events;
+  }
+
+  // Render markdown content
+  const contentHtml = n.content
+    ? await marked.parse(n.content)
+    : `<div class="ed-empty">no content</div>`;
+
+  // Header: edit button + slug + type/status labels + scope + (task-only) work_status pills
+  const isTask = n.node_type === "task";
+  const isCanon = n.status === "canon";
+  const typeColor = isTask ? "#C2410C" : "#1A1A1A";
+  const statusColor = isCanon ? "#15803d" : "#1A1A1A";
+  const statusWeight = isCanon ? "600" : "400";
+
+  const workStatusPills = isTask
+    ? `<div class="ed-ws-row">${(["inbox", "in-progress", "done"] as const)
+        .map(ws => {
+          const sel = n.work_status === ws;
+          const label = ws === "in-progress" ? "in progress" : ws;
+          return `<span class="ed-ws-pill${sel ? " ed-ws-pill-sel" : ""}">${escapeHtml(label)}</span>`;
+        })
+        .join("")}</div>`
+    : "";
+
+  const tagsHtml = (n.tags ?? []).length > 0
+    ? `<div class="ed-tags">${(n.tags ?? []).map(t => `<span class="ed-tag">${escapeHtml(t)}</span>`).join("")}</div>`
+    : "";
+
+  const eventsHtml = events.length > 0
+    ? `<div class="ed-activity">
+        <div class="ed-activity-label">activity</div>
+        <div class="ed-activity-list">
+          ${events.map(ev => {
+            const ts = ev.occurred_at
+              ? new Date(ev.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : "";
+            const actor = ev.actor ?? "";
+            const kind = ev.event_kind ?? "";
+            const outcome = ev.outcome
+              ? `<span class="ed-ev-outcome">→ ${escapeHtml(String(ev.outcome))}</span>`
+              : "";
+            return `<div class="ed-ev-row">
+              <span class="ed-ev-ts">${escapeHtml(ts)}</span>
+              <span class="ed-ev-actor">${escapeHtml(actor)}</span>
+              <span class="ed-ev-kind">${escapeHtml(kind)}</span>
+              ${outcome}
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`
+    : "";
+
+  const css = `
+  .ed *{box-sizing:border-box;margin:0;padding:0}
+  .ed{background:#F5F2E8;color:#1A1A1A;font-family:Georgia,'Source Serif 4',serif;font-size:15px;line-height:1.6;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .ed-header{flex-shrink:0;border-bottom:1px solid #B8B09C;background:#F5F2E8;padding:12px 20px;display:flex;flex-direction:column;gap:8px}
+  .ed-header-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .ed-edit-btn{font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;border:1px solid #C2410C;padding:2px 10px;color:#C2410C;background:transparent;cursor:pointer;text-decoration:none;display:inline-block}
+  .ed-edit-btn:hover{background:#C2410C;color:#F5F2E8}
+  .ed-slug{font-family:'JetBrains Mono','Courier New',monospace;font-size:13px;font-weight:700;color:#1A1A1A}
+  .ed-meta{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;color:#6B6558}
+  .ed-meta-label{color:#9A9484}
+  .ed-meta-val{color:#1A1A1A}
+  .ed-scope{font-family:'JetBrains Mono','Courier New',monospace;font-size:9px;color:#9A9484}
+  .ed-ws-row{display:flex;gap:1px}
+  .ed-ws-pill{font-family:'JetBrains Mono','Courier New',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.05em;padding:4px 10px;border:1px solid #B8B09C;color:#9A9484;background:transparent}
+  .ed-ws-pill-sel{background:#1A1A1A;color:#F5F2E8;border-color:#1A1A1A}
+  .ed-body{flex:1;min-height:0;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:16px}
+  .ed-empty{font-size:13px;color:#9A9484;font-style:italic}
+  .ed-content{color:#1A1A1A;font-family:Georgia,'Source Serif 4',serif}
+  .ed-content h1{font-family:Georgia,serif;font-size:1.7em;font-weight:700;margin:1em 0 .4em;line-height:1.25;border-bottom:2px solid #C2410C;padding-bottom:.2em}
+  .ed-content h2{font-family:Georgia,serif;font-size:1.3em;font-weight:700;margin:1em 0 .35em;line-height:1.3}
+  .ed-content h3{font-family:Georgia,serif;font-size:1.1em;font-weight:700;color:#C2410C;margin:.9em 0 .3em;text-transform:uppercase;letter-spacing:.05em}
+  .ed-content p{margin:.6em 0}
+  .ed-content p:first-child{margin-top:0}
+  .ed-content strong{font-weight:700}
+  .ed-content em{font-style:italic;color:#6B6558}
+  .ed-content code{font-family:'JetBrains Mono','Courier New',monospace;font-size:.88em;background:#fff;border:1px solid #B8B09C;color:#C2410C;padding:.1em .35em;border-radius:2px}
+  .ed-content pre{background:#fff;border:1.5px solid #B8B09C;border-left:4px solid #C2410C;padding:.9em 1em;overflow-x:auto;margin:.9em 0}
+  .ed-content pre code{background:none;border:none;padding:0;color:#1A1A1A}
+  .ed-content ul,.ed-content ol{padding-left:1.5em;margin:.7em 0}
+  .ed-content li{margin:.25em 0}
+  .ed-content blockquote{border-left:4px solid #C2410C;padding:.4em .9em;color:#6B6558;margin:.9em 0;background:rgba(194,65,12,0.04)}
+  .ed-content a{color:#C2410C;font-weight:500}
+  .ed-content hr{border:none;border-top:1px solid #B8B09C;margin:1.2em 0}
+  .ed-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .ed-tag{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;border:1px solid #B8B09C;padding:1px 7px;color:#6B6558;background:#fff}
+  .ed-activity{border-top:1px solid #B8B09C;padding-top:12px}
+  .ed-activity-label{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.15em;color:#9A9484;margin-bottom:8px}
+  .ed-activity-list{display:flex;flex-direction:column;gap:5px}
+  .ed-ev-row{display:flex;align-items:baseline;gap:8px;font-family:'JetBrains Mono','Courier New',monospace;font-size:10px}
+  .ed-ev-ts{color:#9A9484;flex-shrink:0}
+  .ed-ev-actor{color:#6B6558;flex-shrink:0}
+  .ed-ev-kind{color:#6B6558}
+  .ed-ev-outcome{color:#9A9484}`;
+
+  const editHref = `/${escapeHtml(n.slug)}?edit=1`;
+
+  const body = `
+  <div class="ed-header">
+    <div class="ed-header-row">
+      <a class="ed-edit-btn" href="${editHref}">edit</a>
+      <span class="ed-slug">${escapeHtml(n.slug)}</span>
+      <span class="ed-meta">
+        <span class="ed-meta-label">type:</span>
+        <span class="ed-meta-val" style="color:${typeColor}">${escapeHtml(n.node_type)}</span>
+      </span>
+      <span class="ed-meta">
+        <span class="ed-meta-label">status:</span>
+        <span class="ed-meta-val" style="color:${statusColor};font-weight:${statusWeight}">${escapeHtml(n.status)}</span>
+      </span>
+    </div>
+    <div class="ed-scope">${escapeHtml(n.scope)}</div>
+    ${workStatusPills}
+  </div>
+  <div class="ed-body">
+    <div class="ed-content">${contentHtml}</div>
+    ${tagsHtml}
+    ${eventsHtml}
+  </div>`;
+
+  const html = fragment
+    ? `<style>${css}</style><div class="ed">${body}</div>`
+    : `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${css}</style></head><body class="ed">${body}</body></html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
   const fragment = req.nextUrl.searchParams.get("f") === "1";
+  const shape = req.nextUrl.searchParams.get("shape");
 
   const sb = getServerSupabase();
+
+  // Editor render shape — read-only parity of NodeViewer.tsx
+  if (shape === "editor") {
+    return renderEditorShape(sb, slug, fragment);
+  }
+
   const { data: node, error } = await sb
     .schema("context_os")
     .from("nodes")
@@ -828,7 +1022,7 @@ export async function GET(
         const tags = escapeHtml((c.tags ?? []).filter(t => !["contact","demo"].includes(t)).join(", ") || "—");
         const safeSlug = escapeHtml(c.slug);
         return `<tr>
-          <td><a href="/${safeSlug}" style="color:#0098fd;text-decoration:none;font-family:monospace">${name}</a></td>
+          <td><a href="/${safeSlug}" style="color:#C2400C;text-decoration:none;font-family:monospace">${name}</a></td>
           <td>${company}</td>
           <td style="font-size:11px">${email}</td>
           <td><span style="font-family:monospace;font-size:10px;border:1px solid #3a3a3a;padding:1px 5px;color:#d8d8dc">${source}</span></td>
