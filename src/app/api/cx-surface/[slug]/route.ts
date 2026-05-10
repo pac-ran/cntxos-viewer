@@ -706,6 +706,186 @@ function renderTree(result: SurfaceResult): string {
   return `<div style="display:flex;flex-direction:column">${sections}</div>`;
 }
 
+// Event-stream render shape (D5 — AC2 spec t-cc-event-stream-render-shape-2026-05-10).
+// Server-rendered HTML string (not a TSX component) following the convention
+// used by renderKanban/renderTable. Expects an array of events from the
+// context_os.events_with_scope view in result.data.
+const ATOMIC_OP_BORDER: Record<string, string> = {
+  read:     "#3b82f6",  // blue
+  write:    "#22c55e",  // green
+  render:   "#8b5cf6",  // purple
+  evaluate: "#f59e0b",  // amber
+  route:    "#6b7280",  // gray
+};
+const OUTCOME_COLORS: Record<string, string> = {
+  "needs-cc":        "#f97316",  // orange
+  "needs-randy":     "#ef4444",  // red
+  "findings":        "#14b8a6",  // teal
+  "stake-requested": "#6366f1",  // indigo
+};
+
+function relativeTimeLabel(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const diffSec = Math.floor((Date.now() - t) / 1000);
+  if (diffSec < 60)        return `${diffSec}s ago`;
+  if (diffSec < 3600)      return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400)     return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 86400 * 2) return "yesterday";
+  if (diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
+  return iso.slice(0, 10);
+}
+
+function findFirstEventArray(data: Record<string, unknown>): Record<string, unknown>[] {
+  for (const v of Object.values(data)) {
+    if (Array.isArray(v) && v.length > 0 && typeof v[0] === "object" && v[0] && "event_kind" in v[0]) {
+      return v as Record<string, unknown>[];
+    }
+  }
+  // fallback: any array
+  for (const v of Object.values(data)) {
+    if (Array.isArray(v)) return v as Record<string, unknown>[];
+  }
+  return [];
+}
+
+function renderEventStream(result: SurfaceResult): string {
+  // Tokens: cream #F5F2E8, ink #1A1A1A, orange #C2400C, rule #B8B09C
+  const events = findFirstEventArray(result.data);
+  const title = escapeHtml(result.title ?? result.slug);
+
+  // Build distinct values for filters
+  const actors = Array.from(new Set(events.map(e => String(e.actor ?? "")).filter(Boolean))).sort();
+  const kinds = Array.from(new Set(events.map(e => String(e.event_kind ?? "")).filter(Boolean))).sort();
+  const ops = Array.from(new Set(events.map(e => String(e.atomic_op ?? "")).filter(Boolean))).sort();
+
+  // Group rows by day. Insert date-separator rows between groups.
+  const rowsHtml: string[] = [];
+  let lastDay = "";
+  for (const e of events) {
+    const occurredAt = String(e.occurred_at ?? "");
+    const day = occurredAt.slice(0, 10);
+    if (day !== lastDay) {
+      lastDay = day;
+      rowsHtml.push(`<div class="es-day" style="margin:18px 0 6px;font-family:monospace;font-size:11px;color:#776E5A;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid #B8B09C;padding-bottom:4px">${escapeHtml(day || "—")}</div>`);
+    }
+
+    const actor = String(e.actor ?? "");
+    const kind = String(e.event_kind ?? "");
+    const op = String(e.atomic_op ?? "");
+    const outcome = e.outcome ? String(e.outcome) : "";
+    const payload = e.payload ?? {};
+    let payloadJson = "";
+    try { payloadJson = JSON.stringify(payload); } catch { payloadJson = String(payload); }
+    const payloadFull = payloadJson;
+    const truncated = payloadJson.length > 120;
+    const payloadSummary = truncated ? payloadJson.slice(0, 120) + "…" : payloadJson;
+    const payloadPretty = (() => {
+      try { return JSON.stringify(payload, null, 2); } catch { return String(payload); }
+    })();
+
+    const opBorder = ATOMIC_OP_BORDER[op] ?? "#B8B09C";
+    const kindBadge = `<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:#FFFFFF;color:#1A1A1A;border:1px solid ${opBorder};font-family:monospace">${escapeHtml(kind || "—")}</span>`;
+    const actorChip = actor
+      ? `<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:#EAE5D2;color:#1A1A1A;font-family:monospace">${escapeHtml(actor)}</span>`
+      : "";
+    const outcomeColor = outcome ? (OUTCOME_COLORS[outcome] ?? "#6b7280") : "";
+    const outcomePill = outcome
+      ? `<span style="font-size:10px;padding:2px 7px;border-radius:9px;background:${outcomeColor}22;color:${outcomeColor};border:1px solid ${outcomeColor}66;font-family:monospace">${escapeHtml(outcome)}</span>`
+      : "";
+
+    const tsLabel = relativeTimeLabel(occurredAt);
+
+    rowsHtml.push(`<details class="es-row"
+        data-actor="${escapeHtml(actor)}"
+        data-kind="${escapeHtml(kind)}"
+        data-op="${escapeHtml(op)}"
+        style="border-bottom:1px solid #E2DCC8;padding:6px 4px">
+      <summary style="display:grid;grid-template-columns:88px auto auto auto 1fr;gap:10px;align-items:center;cursor:pointer;list-style:none">
+        <span title="${escapeHtml(occurredAt)}" style="font-size:11px;color:#776E5A;font-family:monospace">${escapeHtml(tsLabel)}</span>
+        ${actorChip}
+        ${kindBadge}
+        ${outcomePill}
+        <span style="font-size:11px;color:#3a3a3a;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(payloadSummary)}</span>
+      </summary>
+      <pre style="margin:8px 0 4px;padding:8px 10px;background:#FFFFFF;border:1px solid #E2DCC8;border-radius:3px;font-size:11px;font-family:monospace;color:#1A1A1A;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto">${escapeHtml(payloadPretty)}</pre>
+      <div style="font-size:10px;color:#776E5A;font-family:monospace;margin-top:4px">id=${escapeHtml(String(e.id ?? ""))} · op=${escapeHtml(op || "—")} · phase=${escapeHtml(String(e.phase ?? "—"))} · payload_bytes=${payloadFull.length}</div>
+    </details>`);
+  }
+
+  // Filter bar
+  const actorOpts = ['<option value="">all actors</option>', ...actors.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`)].join("");
+  const kindOpts = ['<option value="">all kinds</option>', ...kinds.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`)].join("");
+  const opButtons = ops.map(o => {
+    const c = ATOMIC_OP_BORDER[o] ?? "#B8B09C";
+    return `<button type="button" data-op-toggle="${escapeHtml(o)}" class="es-op-btn" style="font-size:10px;padding:3px 9px;border-radius:3px;background:#FFFFFF;color:#1A1A1A;border:1px solid ${c};font-family:monospace;cursor:pointer">${escapeHtml(o)}</button>`;
+  }).join(" ");
+
+  const filterBar = `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid #B8B09C;margin-bottom:6px">
+    <select id="es-actor" style="font-size:11px;padding:3px 6px;background:#FFFFFF;color:#1A1A1A;border:1px solid #B8B09C;border-radius:3px;font-family:monospace">${actorOpts}</select>
+    <select id="es-kind" style="font-size:11px;padding:3px 6px;background:#FFFFFF;color:#1A1A1A;border:1px solid #B8B09C;border-radius:3px;font-family:monospace">${kindOpts}</select>
+    <span style="font-size:10px;color:#776E5A;font-family:monospace">ops:</span> ${opButtons}
+    <span id="es-count" style="font-size:10px;color:#776E5A;font-family:monospace;margin-left:auto">${events.length} events</span>
+  </div>`;
+
+  const script = `<script>(function(){
+    var rows = document.querySelectorAll('.es-row');
+    var actorSel = document.getElementById('es-actor');
+    var kindSel = document.getElementById('es-kind');
+    var opBtns = document.querySelectorAll('[data-op-toggle]');
+    var opOff = {};
+    function apply(){
+      var a = actorSel.value, k = kindSel.value;
+      var shown = 0;
+      rows.forEach(function(r){
+        var ok = true;
+        if (a && r.dataset.actor !== a) ok = false;
+        if (k && r.dataset.kind !== k) ok = false;
+        if (opOff[r.dataset.op]) ok = false;
+        r.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+      });
+      var c = document.getElementById('es-count');
+      if (c) c.textContent = shown + ' / ' + rows.length + ' events';
+      // Hide empty day separators
+      var days = document.querySelectorAll('.es-day');
+      days.forEach(function(d){
+        var n = d.nextElementSibling, anyVisible = false;
+        while (n && !n.classList.contains('es-day')) {
+          if (n.style.display !== 'none') { anyVisible = true; break; }
+          n = n.nextElementSibling;
+        }
+        d.style.display = anyVisible ? '' : 'none';
+      });
+    }
+    actorSel.addEventListener('change', apply);
+    kindSel.addEventListener('change', apply);
+    opBtns.forEach(function(b){
+      b.addEventListener('click', function(){
+        var op = b.dataset.opToggle;
+        opOff[op] = !opOff[op];
+        b.style.opacity = opOff[op] ? '0.35' : '1';
+        b.style.textDecoration = opOff[op] ? 'line-through' : 'none';
+        apply();
+      });
+    });
+  })();</script>`;
+
+  if (events.length === 0) {
+    return `<div style="background:#F5F2E8;color:#1A1A1A;padding:14px 16px;border-radius:4px;font-family:system-ui,sans-serif">
+      <div style="font-size:13px;color:#1A1A1A;font-weight:600;margin-bottom:6px">${title}</div>
+      <div style="font-size:11px;color:#776E5A">No events.</div>
+    </div>`;
+  }
+
+  return `<div style="background:#F5F2E8;color:#1A1A1A;padding:14px 16px;border-radius:4px;font-family:system-ui,sans-serif">
+    <div style="font-size:13px;color:#1A1A1A;font-weight:600;margin-bottom:2px">${title}</div>
+    ${filterBar}
+    <div>${rowsHtml.join("")}</div>
+    ${script}
+  </div>`;
+}
+
 function renderSurface(result: SurfaceResult): string {
   switch (result.render_shape) {
     case "kanban":           return renderKanban(result);
@@ -722,6 +902,7 @@ function renderSurface(result: SurfaceResult): string {
     case "box-health":       return renderBoxHealth(result);
     case "timeline":         return renderTimeline(result);
     case "tree":             return renderTree(result);
+    case "event-stream":     return renderEventStream(result);
     default:                 return renderCardGrid(result);
   }
 }

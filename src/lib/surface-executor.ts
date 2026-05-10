@@ -9,7 +9,8 @@ import { getServerSupabase } from "@/lib/supabase-server";
 export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
   | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid"
-  | "file-browser" | "cluster-state" | "intercom-events" | "box-health";
+  | "file-browser" | "cluster-state" | "intercom-events" | "box-health"
+  | "event-stream";
 
 export interface SurfaceStep {
   id: string;
@@ -171,6 +172,39 @@ export async function executeSurface(
           const { data } = await q;
           ctx[step.id] = data ?? [];
         }
+        break;
+      }
+
+      case "fetch_events_with_scope": {
+        // Queries context_os.events_with_scope (joined view) for full
+        // event-stream render: includes atomic_op, phase, scope, node_slug, etc.
+        const nodeSlug = String(p.node_slug ?? p.slug ?? "");
+        const nodeId = String(p.node_id ?? "");
+        const limit = Number(p.limit ?? 100);
+        const order = String(p.order ?? "desc").toLowerCase() === "asc" ? true : false;
+
+        let resolvedNodeId = nodeId;
+        if (!resolvedNodeId && nodeSlug) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: n } = await (sb as any)
+            .from("nodes").select("id").eq("slug", nodeSlug).single();
+          if (!n?.id) { ctx[step.id] = []; break; }
+          resolvedNodeId = String(n.id);
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let q = (sb.schema("context_os") as any)
+          .from("events_with_scope")
+          .select("id,occurred_at,event_kind,actor,atomic_op,phase,outcome,payload,parent_event_id,session_id,subject_node_id,node_slug,node_type,scope,node_tags")
+          .order("occurred_at", { ascending: order })
+          .limit(limit);
+        if (resolvedNodeId) q = q.eq("subject_node_id", resolvedNodeId);
+        if (p.event_kind) q = q.eq("event_kind", String(p.event_kind));
+        if (p.actor) q = q.eq("actor", String(p.actor));
+        if (p.atomic_op) q = q.eq("atomic_op", String(p.atomic_op));
+        const { data, error } = await q;
+        if (error) throw new Error(`fetch_events_with_scope: ${error.message}`);
+        ctx[step.id] = data ?? [];
         break;
       }
 
