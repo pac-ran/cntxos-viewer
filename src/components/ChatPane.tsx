@@ -114,19 +114,26 @@ function readDevMode(): boolean {
   return new URLSearchParams(window.location.search).get("dev") === "1";
 }
 
-export function ChatPane() {
+interface ChatPaneProps {
+  /** Mobile mode: chat is always full-height, close button hidden,
+   *  open/closed localStorage state ignored. */
+  mobile?: boolean;
+}
+
+export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   // SSR returns null; useEffect resolves on client. Tracking hydration in a
   // separate flag prevents disabled-attr hydration mismatch on the textarea.
   const [actor, setActor] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [devMode, setDevMode] = useState(false);
   // Chat open/closed is deliberate (not auto). Default open; persisted per actor.
+  // In mobile mode chatOpen is forced true and never toggles.
   const [chatOpen, setChatOpen] = useState<boolean>(true);
   useEffect(() => {
     const a = readActor();
     setActor(a);
     setDevMode(readDevMode());
-    if (a) {
+    if (a && !mobile) {
       try {
         const raw = localStorage.getItem(`chat-open-${a}`);
         if (raw === "0") setChatOpen(false);
@@ -525,7 +532,7 @@ export function ChatPane() {
   // of the viewport so the viewer pane fills the full height. The parent
   // (pane/agent/page.tsx) listens to the same localStorage key and removes
   // the chat region from the layout entirely.
-  if (!chatOpen) {
+  if (!chatOpen && !mobile) {
     return (
       <button
         type="button"
@@ -557,16 +564,18 @@ export function ChatPane() {
         <span className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: "#6b6450" }}>
           chat
         </span>
-        <button
-          type="button"
-          onClick={() => setChatOpen(false)}
-          aria-label="Close chat"
-          title="Close chat"
-          className="w-6 h-6 flex items-center justify-center text-[14px] leading-none hover:opacity-100 opacity-70 transition-opacity"
-          style={{ color: INK }}
-        >
-          ✕
-        </button>
+        {!mobile && (
+          <button
+            type="button"
+            onClick={() => setChatOpen(false)}
+            aria-label="Close chat"
+            title="Close chat"
+            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none hover:opacity-100 opacity-70 transition-opacity"
+            style={{ color: INK }}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Body — sidebar (sessions) + main column (thread/input/controls) */}
