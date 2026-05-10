@@ -28,7 +28,13 @@ export function WrapperPanel() {
   const [slots, setSlots] = useState<FrameSlot[] | null>(null);
   const [live, setLive] = useState(false);
   const [convId, setConvId] = useState<string | null>(null);
-  const [actor] = useState<string | null>(() => readActor());
+  const [actor, setActor] = useState<string | null>(null);
+  const [devMode, setDevMode] = useState(false);
+  useEffect(() => { setActor(readActor()); }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDevMode(new URLSearchParams(window.location.search).get("dev") === "1");
+  }, []);
 
   // Initial load via server-side API (service_role, bypasses RLS) —
   // returns slots + the resolved conv_id for the actor's frame-state
@@ -75,22 +81,33 @@ export function WrapperPanel() {
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      <div className="shrink-0 flex items-center gap-3 px-5 py-2.5 border-b border-rule/30">
-        <span
-          className={`w-2 h-2 rounded-full shrink-0 ${live ? "bg-green-500 animate-pulse" : "bg-muted/30"}`}
-          title={live ? "connected" : "connecting"}
-        />
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
-          {actor ? `${actor.toUpperCase()} viewer` : "viewer"}
-        </span>
+      {/* Header strip — diagnostic chrome (live dot + ACTOR label) is dev-only.
+          FeedbackButtons stay always-visible for the operator. */}
+      {(devMode || actor) && (
+        <div className="shrink-0 flex items-center gap-3 px-5 py-2.5 border-b border-rule/30">
+          {devMode && (
+            <>
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${live ? "bg-green-500 animate-pulse" : "bg-muted/30"}`}
+                title={live ? "connected" : "connecting"}
+              />
+              <span
+                className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted"
+                style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif' }}
+              >
+                {actor ? `${actor.toUpperCase()} viewer` : "viewer"}
+              </span>
+            </>
+          )}
 
-        {/* Feedback buttons — RIGHT pane only (Randy 2026-05-09: belong here,
-            not in workspace top bar where they refresh both panes). Posts
-            user-feedback events on conv-frame-state-{actor}. */}
-        {actor && (
-          <FeedbackButtons actor={actor} />
-        )}
-      </div>
+          {/* Feedback buttons — RIGHT pane only (Randy 2026-05-09: belong here,
+              not in workspace top bar where they refresh both panes). Posts
+              user-feedback events on conv-frame-state-{actor}. */}
+          {actor && (
+            <FeedbackButtons actor={actor} />
+          )}
+        </div>
+      )}
 
       {slots === null && (
         <div className="flex-1 flex items-center justify-center">
