@@ -923,7 +923,14 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
             onChange={e => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={streaming ? "streaming…" : (expanded ? "message — Enter to send · Shift+Enter newline" : "Ask…")}
-            disabled={!hydrated || streaming || !actor}
+            /* Mobile keyboard fix: never disable on mobile (iOS/Android won't
+               open the keyboard if the textarea was rendered disabled at any
+               point during hydration). Only block sending in send() if
+               !hydrated || !actor. */
+            disabled={mobile ? streaming : (!hydrated || streaming || !actor)}
+            inputMode="text"
+            autoCapitalize="sentences"
+            autoCorrect="on"
             rows={expanded ? 2 : 1}
             className={`flex-1 resize-none bg-transparent border-0 px-2 py-1.5 text-[13px] leading-relaxed focus:outline-none${mobile ? " chat-ta-mobile" : ""}`}
             style={{
