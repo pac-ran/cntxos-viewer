@@ -114,10 +114,17 @@ function readDevMode(): boolean {
 }
 
 export function ChatPane() {
-  const [actor] = useState<string | null>(() => readActor());
+  // SSR returns null; useEffect resolves on client. Tracking hydration in a
+  // separate flag prevents disabled-attr hydration mismatch on the textarea.
+  const [actor, setActor] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [devMode, setDevMode] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
-  useEffect(() => { setDevMode(readDevMode()); }, []);
+  useEffect(() => {
+    setActor(readActor());
+    setDevMode(readDevMode());
+    setHydrated(true);
+  }, []);
   const [model, setModel] = useState<DeepseekModelId>("deepseek-v4-flash");
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
@@ -685,7 +692,7 @@ export function ChatPane() {
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
             placeholder={streaming ? "streaming…" : (expanded ? "message — Enter to send · Shift+Enter newline" : "Ask…")}
-            disabled={streaming || !actor}
+            disabled={!hydrated || streaming || !actor}
             rows={expanded ? 2 : 1}
             className="flex-1 resize-none bg-transparent border-0 px-2 py-1.5 text-[13px] leading-relaxed focus:outline-none"
             style={{
