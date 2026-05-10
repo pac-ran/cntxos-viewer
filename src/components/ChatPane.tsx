@@ -119,12 +119,26 @@ export function ChatPane() {
   const [actor, setActor] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [devMode, setDevMode] = useState(false);
-  const [inputFocused, setInputFocused] = useState(false);
+  // Chat open/closed is deliberate (not auto). Default open; persisted per actor.
+  const [chatOpen, setChatOpen] = useState<boolean>(true);
   useEffect(() => {
-    setActor(readActor());
+    const a = readActor();
+    setActor(a);
     setDevMode(readDevMode());
+    if (a) {
+      try {
+        const raw = localStorage.getItem(`chat-open-${a}`);
+        if (raw === "0") setChatOpen(false);
+        else if (raw === "1") setChatOpen(true);
+      } catch { /* ignore */ }
+    }
     setHydrated(true);
   }, []);
+  // Persist open/closed per actor.
+  useEffect(() => {
+    if (!actor || !hydrated) return;
+    try { localStorage.setItem(`chat-open-${actor}`, chatOpen ? "1" : "0"); } catch { /* ignore */ }
+  }, [chatOpen, actor, hydrated]);
   const [model, setModel] = useState<DeepseekModelId>("deepseek-v4-flash");
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
@@ -497,18 +511,60 @@ export function ChatPane() {
 
   const sidebarWidth = sidebarCollapsed ? 32 : 144;
 
-  // Pass 4 recession (Randy 2026-05-10): collapse to single input row when
-  // there are no turns AND the input isn't focused. Once turns exist, expand
-  // upward to show conversation. Smooth height transition handled at parent
-  // level via CSS — here we just toggle the "expanded" flag.
-  const expanded = inputFocused || turns.length > 0 || streaming;
+  // Chat is open or closed — deliberately, persisted per actor (Randy 2026-05-10).
+  // No focus-or-content magic. Aliased to "expanded" to keep downstream JSX small.
+  const expanded = chatOpen;
+
+  // Closed state: a single deliberate reopen affordance. No magic.
+  if (!chatOpen) {
+    return (
+      <div
+        className="flex items-center justify-between h-full px-3 transition-all duration-200 ease-out"
+        style={{ background: CHAT_BG, color: INK, fontFamily: FONT_SANS, borderTop: `1px solid ${RULE}80` }}
+      >
+        <span className="text-[12px]" style={{ color: "#6b6450" }}>
+          chat closed
+        </span>
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="text-[12px] px-3 py-1.5 border transition-colors"
+          style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
+        >
+          Open chat
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
-      className="flex h-full transition-all duration-150 ease-out"
+      className="flex flex-col h-full transition-all duration-200 ease-out"
       style={{ background: CHAT_BG, color: INK, fontFamily: FONT_SANS }}
     >
-      {/* Sidebar — sessions. Hidden when chat is recessed (no turns, not focused). */}
+      {/* Header — title + close. Deliberate, not cute. */}
+      <div
+        className="shrink-0 flex items-center justify-between px-3 py-1.5 border-b"
+        style={{ borderColor: `${RULE}80`, background: CHAT_BG }}
+      >
+        <span className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: "#6b6450" }}>
+          chat
+        </span>
+        <button
+          type="button"
+          onClick={() => setChatOpen(false)}
+          aria-label="Close chat"
+          title="Close chat"
+          className="w-6 h-6 flex items-center justify-center text-[14px] leading-none hover:opacity-100 opacity-70 transition-opacity"
+          style={{ color: INK }}
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Body — sidebar (sessions) + main column (thread/input/controls) */}
+      <div className="flex flex-1 min-h-0">
+      {/* Sidebar — sessions. */}
       {expanded && (
       <div
         className="shrink-0 flex flex-col h-full transition-all"
@@ -689,8 +745,6 @@ export function ChatPane() {
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
-            onFocus={() => setInputFocused(true)}
-            onBlur={() => setInputFocused(false)}
             placeholder={streaming ? "streaming…" : (expanded ? "message — Enter to send · Shift+Enter newline" : "Ask…")}
             disabled={!hydrated || streaming || !actor}
             rows={expanded ? 2 : 1}
@@ -762,6 +816,7 @@ export function ChatPane() {
           </span>
         </div>
         )}
+      </div>
       </div>
     </div>
   );
