@@ -20,75 +20,86 @@ function readActor(): string | null {
   return new URLSearchParams(window.location.search).get("actor");
 }
 
-function readChatOpen(actor: string | null): boolean {
-  if (!actor || typeof window === "undefined") return true;
+type ChatSize = "closed" | "half" | "full";
+
+function readChatSize(actor: string | null): ChatSize {
+  if (!actor || typeof window === "undefined") return "half";
   try {
     const raw = localStorage.getItem(`chat-open-${actor}`);
-    if (raw === "0") return false;
-    if (raw === "1") return true;
+    // Backwards compat with the boolean era
+    if (raw === "0") return "closed";
+    if (raw === "1") return "half";
+    if (raw === "closed" || raw === "half" || raw === "full") return raw;
   } catch { /* ignore */ }
-  return true;
+  return "half";
 }
 
 export default function AgentPanePage() {
-  // Default to true server-side & on first paint to avoid hydration flicker.
-  // The ChatPane component is the source of truth for the persisted value;
-  // this layout-level mirror is only used to decide whether to reserve flex
-  // space for the chat region.
-  const [chatOpen, setChatOpen] = useState<boolean>(true);
+  // 3-state chat sizing per Randy 2026-05-11: closed | half | full.
+  // Layout reacts: closed → viewer full; half → 50/50; full → chat full, viewer hidden.
+  // ChatPane is source of truth for the persisted value; this mirror decides flex.
+  const [chatSize, setChatSize] = useState<ChatSize>("half");
 
   useEffect(() => {
     const actor = readActor();
-    setChatOpen(readChatOpen(actor));
+    setChatSize(readChatSize(actor));
 
-    // ChatPane writes to localStorage on toggle. We can't observe same-tab
-    // localStorage writes via the storage event, so ChatPane is expected to
-    // also dispatch a CustomEvent("chat-open-change", { detail: { open } }).
-    // Until that wires up cleanly, we poll on a quick interval — the cost is
-    // trivial and the UX is correct.
     const onCustom = (e: Event) => {
-      const ce = e as CustomEvent<{ open?: boolean }>;
-      if (typeof ce.detail?.open === "boolean") setChatOpen(ce.detail.open);
+      const ce = e as CustomEvent<{ size?: ChatSize; open?: boolean }>;
+      if (ce.detail?.size === "closed" || ce.detail?.size === "half" || ce.detail?.size === "full") {
+        setChatSize(ce.detail.size);
+      } else if (typeof ce.detail?.open === "boolean") {
+        // Back-compat: chat-open-change fires {open:bool}
+        setChatSize(ce.detail.open ? "half" : "closed");
+      }
     };
     const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.startsWith("chat-open-")) {
-        setChatOpen(e.newValue === "0" ? false : true);
-      }
+      if (!e.key || !e.key.startsWith("chat-open-")) return;
+      const v = e.newValue;
+      if (v === "0") setChatSize("closed");
+      else if (v === "1") setChatSize("half");
+      else if (v === "closed" || v === "half" || v === "full") setChatSize(v);
     };
     const id = window.setInterval(() => {
       const a = readActor();
-      const next = readChatOpen(a);
-      setChatOpen((prev) => (prev === next ? prev : next));
+      const next = readChatSize(a);
+      setChatSize((prev) => (prev === next ? prev : next));
     }, 400);
+    window.addEventListener("chat-size-change", onCustom as EventListener);
     window.addEventListener("chat-open-change", onCustom as EventListener);
     window.addEventListener("storage", onStorage);
     return () => {
       window.clearInterval(id);
+      window.removeEventListener("chat-size-change", onCustom as EventListener);
       window.removeEventListener("chat-open-change", onCustom as EventListener);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
 
+  const showViewer = chatSize !== "full";
+  const showChat = chatSize !== "closed";
+
   return (
     <div className="flex flex-col h-screen" style={{ background: CONTENT_BG }}>
-      <div
-        className={`${chatOpen ? "flex-1" : "flex-1"} min-h-0 overflow-hidden`}
-        style={{ background: CONTENT_BG }}
-      >
-        <WrapperPanel />
-      </div>
-      {chatOpen && (
+      {showViewer && (
         <div
-          className="flex-1 min-h-0 overflow-hidden border-t"
-          style={{ borderColor: `${RULE}80` }}
+          className="flex-1 min-h-0 overflow-hidden"
+          style={{ background: CONTENT_BG }}
+        >
+          <WrapperPanel />
+        </div>
+      )}
+      {showChat && (
+        <div
+          className={`${showViewer ? "flex-1 border-t" : "flex-1"} min-h-0 overflow-hidden`}
+          style={{ borderColor: showViewer ? `${RULE}80` : undefined }}
         >
           <ChatPane />
         </div>
       )}
       {/* When closed, ChatPane renders ONLY a fixed-position floating button.
           Mounting it outside the flex region ensures no reserved space. */}
-      {!chatOpen && <ChatPane />}
+      {!showChat && <ChatPane />}
     </div>
   );
 }

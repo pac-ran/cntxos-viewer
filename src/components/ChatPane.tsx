@@ -126,9 +126,14 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   const [actor, setActor] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [devMode, setDevMode] = useState(false);
-  // Chat open/closed is deliberate (not auto). Default open; persisted per actor.
-  // In mobile mode chatOpen is forced true and never toggles.
-  const [chatOpen, setChatOpen] = useState<boolean>(true);
+  // Chat size is 3-state: closed | half | full. Deliberate, persisted per actor.
+  // Randy 2026-05-11: horizontal icons in header mirror workspace LAYOUT_PRESETS
+  // pattern. Viewer gets the remainder of the right pane when chat sizes.
+  // In mobile mode chat is forced 'half' (full-height single column).
+  type ChatSize = "closed" | "half" | "full";
+  const [chatSize, setChatSize] = useState<ChatSize>("half");
+  const setChatOpen = (open: boolean) => setChatSize(open ? "half" : "closed");
+  const chatOpen = chatSize !== "closed";
   useEffect(() => {
     const a = readActor();
     setActor(a);
@@ -136,21 +141,25 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
     if (a && !mobile) {
       try {
         const raw = localStorage.getItem(`chat-open-${a}`);
-        if (raw === "0") setChatOpen(false);
-        else if (raw === "1") setChatOpen(true);
+        // Backwards compat: "0" → closed, "1" → half. New: enum value.
+        if (raw === "0") setChatSize("closed");
+        else if (raw === "1") setChatSize("half");
+        else if (raw === "closed" || raw === "half" || raw === "full") setChatSize(raw);
       } catch { /* ignore */ }
     }
     setHydrated(true);
   }, []);
-  // Persist open/closed per actor + notify the parent layout (pane/agent/page)
-  // via a custom event so it can drop the chat region from flex when closed.
+  // Persist size per actor + notify parent layout via custom event.
+  // Parent (pane/agent/page or WrapperPanel) uses detail.size to flex viewer.
   useEffect(() => {
     if (!actor || !hydrated) return;
-    try { localStorage.setItem(`chat-open-${actor}`, chatOpen ? "1" : "0"); } catch { /* ignore */ }
+    try { localStorage.setItem(`chat-open-${actor}`, chatSize); } catch { /* ignore */ }
     try {
+      window.dispatchEvent(new CustomEvent("chat-size-change", { detail: { size: chatSize, open: chatOpen } }));
+      // Backwards-compat: emit chat-open-change too so existing listeners keep working
       window.dispatchEvent(new CustomEvent("chat-open-change", { detail: { open: chatOpen } }));
     } catch { /* ignore */ }
-  }, [chatOpen, actor, hydrated]);
+  }, [chatSize, actor, hydrated]);
   const [model, setModel] = useState<DeepseekModelId>("deepseek-v4-flash");
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
@@ -591,16 +600,32 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
           </span>
         </div>
         {!mobile && (
-          <button
-            type="button"
-            onClick={() => setChatOpen(false)}
-            aria-label="Close chat"
-            title="Close chat"
-            className="w-6 h-6 flex items-center justify-center text-[14px] leading-none hover:opacity-100 opacity-70 transition-opacity"
-            style={{ color: INK }}
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1" title="Chat size">
+            {([
+              { id: "closed" as ChatSize, glyph: "▭", tooltip: "Close chat — viewer full" },
+              { id: "half" as ChatSize, glyph: "◫", tooltip: "Half — even split with viewer" },
+              { id: "full" as ChatSize, glyph: "■", tooltip: "Full — chat fills, viewer hidden" },
+            ]).map((p) => {
+              const active = chatSize === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setChatSize(p.id)}
+                  aria-label={p.tooltip}
+                  title={p.tooltip}
+                  className="w-6 h-6 flex items-center justify-center text-[13px] leading-none border transition-colors"
+                  style={
+                    active
+                      ? { background: ORANGE, color: CREAM, borderColor: ORANGE }
+                      : { background: "transparent", color: INK, borderColor: `${RULE}80` }
+                  }
+                >
+                  {p.glyph}
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
