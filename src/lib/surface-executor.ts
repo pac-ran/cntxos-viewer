@@ -488,13 +488,39 @@ export async function executeSurface(
       case "fetch_node": {
         const nodeSlug = String(p.slug ?? "");
         if (!nodeSlug) { ctx[step.id] = null; break; }
+        const fieldPath = typeof p.field_path === "string" ? p.field_path : null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data } = await (sb as any)
           .from("nodes")
           .select("id,slug,node_type,content,scope,payload,tags,status,work_status,claimed_by")
           .eq("slug", nodeSlug)
           .single();
-        ctx[step.id] = data ?? null;
+        if (!data) { ctx[step.id] = null; break; }
+        // field_path enables boot walks to pull a subset (e.g. payload.boot_summary)
+        // rather than the full row. Closes g-boot-pack-weight-over-budget-2026-05-11.
+        // Defaults to full row when field_path is absent (backwards compatible).
+        if (fieldPath) {
+          if (fieldPath === "content") {
+            ctx[step.id] = { slug: data.slug, node_type: data.node_type, content: data.content };
+          } else if (fieldPath.startsWith("payload.")) {
+            const parts = fieldPath.slice(8).split(".");
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let v: any = data.payload;
+            for (const k of parts) {
+              if (v && typeof v === "object" && k in v) v = v[k];
+              else { v = undefined; break; }
+            }
+            if (v !== undefined) {
+              ctx[step.id] = { slug: data.slug, node_type: data.node_type, field_path: fieldPath, payload_field: v };
+            } else {
+              ctx[step.id] = { slug: data.slug, node_type: data.node_type, field_path: fieldPath, field_missing: true, content_fallback: (data.content || "").slice(0, 800) };
+            }
+          } else {
+            ctx[step.id] = data;
+          }
+        } else {
+          ctx[step.id] = data;
+        }
         break;
       }
 
