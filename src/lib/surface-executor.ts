@@ -14,9 +14,24 @@ export type RenderShape =
 
 export interface SurfaceStep {
   id: string;
-  phase: "walk" | "weigh" | "stake";
+  phase: "walk" | "weigh" | "stake" | "render";
   op: string;
   params?: Record<string, unknown>;
+}
+
+// Result shapes for the new render/stake ops (P1 of t-cc-build-claude-md-render-walk-2026-05-11)
+export interface RenderTemplateResult {
+  rendered: boolean;
+  diff_lines: number;
+  out_file: string;
+  content_hash: string;
+  wrote: boolean;
+}
+export interface GitCommitResult {
+  committed: boolean;
+  sha?: string;
+  files?: string[];
+  message?: string;
 }
 
 export interface SurfaceSpec {
@@ -74,6 +89,62 @@ function resolvePath(obj: Record<string, unknown>, path: string): unknown {
     if (typeof acc === "object") return (acc as Record<string, unknown>)[key];
     return undefined;
   }, obj);
+}
+
+// Minimal handlebars-like substitution for render_template. Supports:
+//   {{var}} or {{path.to.var}}  → resolvePath
+//   {{#each items}}...{{/each}} → iterate; inside block, `this` = current item
+//   Inside an each block, {{var}} resolves against the item first, then ctx.
+// Newlines and whitespace are preserved verbatim. HTML escaping is OFF — this
+// renders markdown / text, not HTML.
+function renderTemplate(tpl: string, ctx: Record<string, unknown>): string {
+  // Pre-extract first-line helpers: when a template uses {{content_first_line}}
+  // on an iterated item, compute it on the fly from item.content.
+  const lookup = (scope: Record<string, unknown>, path: string): string => {
+    if (path === "this") return String(scope.this ?? "");
+    // Special helper: content_first_line — first non-empty line of `content`.
+    if (path === "content_first_line") {
+      const c = String(scope.content ?? "");
+      return (c.split("\n").find((l) => l.trim()) ?? "").trim();
+    }
+    const v = resolvePath(scope, path);
+    if (v == null) return "";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  };
+
+  // Process each-blocks first via a recursive replace. The regex grabs the
+  // innermost block by being non-greedy.
+  const eachRe = /\{\{#each\s+([a-zA-Z0-9_.]+)\s*\}\}([\s\S]*?)\{\{\/each\}\}/;
+  let out = tpl;
+  // Cap iterations to avoid infinite loops on malformed templates.
+  for (let safety = 0; safety < 50; safety++) {
+    const m = eachRe.exec(out);
+    if (!m) break;
+    const [whole, listPath, body] = m;
+    const list = resolvePath(ctx, listPath);
+    const arr = Array.isArray(list) ? list : [];
+    const pieces: string[] = [];
+    for (const item of arr) {
+      const itemScope: Record<string, unknown> =
+        item != null && typeof item === "object"
+          ? { ...(item as Record<string, unknown>), this: item }
+          : { this: item };
+      // Substitute {{var}} inside the block against itemScope first, falling
+      // back to outer ctx. Strip any nested each blocks first (not supported).
+      const rendered = body.replace(/\{\{([^#/][^}]*)\}\}/g, (_, raw: string) => {
+        const path = raw.trim();
+        const vItem = lookup(itemScope, path);
+        if (vItem !== "") return vItem;
+        return lookup(ctx, path);
+      });
+      pieces.push(rendered);
+    }
+    out = out.slice(0, m.index) + pieces.join("") + out.slice(m.index + whole.length);
+  }
+  // Top-level variable substitution.
+  out = out.replace(/\{\{([^#/][^}]*)\}\}/g, (_, raw: string) => lookup(ctx, raw.trim()));
+  return out;
 }
 
 // Replace ${param:key} tokens in step params
@@ -182,6 +253,86 @@ export async function executeSurface(
           ctx[step.id] = { ok: true, data, updates, target_slug: targetSlug };
           break;
         }
+        case "git_commit_if_changed": {
+          // Stage + commit files changed in repo. Never pushes.
+          const repoRaw = String(p.repo ?? "");
+          const messagePrefix = String(p.message_prefix ?? "chore: regenerate");
+          // Allowlist to prevent arbitrary git operations.
+          const REPO_ALLOWLIST = ["/home/ubuntu/code/cntxos", "/home/ubuntu/code/viewer"];
+          if (!REPO_ALLOWLIST.includes(repoRaw)) {
+            ctx[step.id] = { committed: false, error: `repo not in allowlist: ${repoRaw}` } satisfies GitCommitResult & { error: string };
+            break;
+          }
+          const { execFileSync } = await import("child_process");
+          const gitArgs = (args: string[]): string => {
+            try {
+              return execFileSync("git", args, {
+                cwd: repoRaw,
+                encoding: "utf8",
+                timeout: 15_000,
+                stdio: ["ignore", "pipe", "pipe"],
+              }).trim();
+            } catch (e) {
+              // Surface git's stderr in the thrown error so we don't lose context.
+              const err = e as { stderr?: Buffer | string; message?: string };
+              const stderr = err.stderr ? (typeof err.stderr === "string" ? err.stderr : err.stderr.toString()) : "";
+              throw new Error(`git ${args[0]} failed: ${stderr.trim() || err.message || String(e)}`);
+            }
+          };
+          // Files to commit: prefer explicit `paths` param. Otherwise gather
+          // from prior render_template step results in ctx (any step result with
+          // `wrote: true` and `out_file` inside repo). This keeps the commit
+          // scoped to artifacts THIS walk produced — never to incidental
+          // workspace state.
+          let files: string[] = [];
+          if (Array.isArray(p.paths)) {
+            files = (p.paths as unknown[]).map(String).filter(Boolean);
+          } else {
+            for (const v of Object.values(ctx)) {
+              if (v && typeof v === "object" && "wrote" in (v as Record<string, unknown>)) {
+                const rr = v as RenderTemplateResult;
+                if (rr.wrote && rr.out_file && rr.out_file.startsWith(repoRaw + "/")) {
+                  files.push(rr.out_file.slice(repoRaw.length + 1));
+                }
+              }
+            }
+          }
+          if (files.length === 0) {
+            ctx[step.id] = { committed: false } satisfies GitCommitResult;
+            break;
+          }
+          try {
+            // Confirm those files actually have changes vs HEAD.
+            const diffNames = gitArgs(["diff", "--name-only", "HEAD", "--", ...files]);
+            if (!diffNames.trim()) {
+              ctx[step.id] = { committed: false } satisfies GitCommitResult;
+              break;
+            }
+            // Stage only the files we care about (use -- pathspec form).
+            gitArgs(["add", "--", ...files]);
+            // Compute a small change summary from numstat against HEAD.
+            let added = 0, removed = 0;
+            try {
+              const numstat = gitArgs(["diff", "--cached", "--numstat", "--", ...files]);
+              for (const ln of numstat.split("\n").filter(Boolean)) {
+                const [a, r] = ln.split("\t");
+                added += Number(a) || 0; removed += Number(r) || 0;
+              }
+            } catch {
+              // fall through
+            }
+            const summary = `${files.length} file${files.length === 1 ? "" : "s"}, +${added}/-${removed}`;
+            const message = `${messagePrefix} — ${summary}`;
+            // `commit -- <pathspec>` makes the commit scoped to those files only,
+            // even if other paths are staged.
+            gitArgs(["commit", "-m", message, "--", ...files]);
+            const sha = gitArgs(["rev-parse", "HEAD"]);
+            ctx[step.id] = { committed: true, sha, files, message } satisfies GitCommitResult;
+          } catch (e) {
+            ctx[step.id] = { committed: false, error: e instanceof Error ? e.message : String(e) } satisfies GitCommitResult & { error: string };
+          }
+          break;
+        }
         case "post_event": {
           const actor = String(p.actor ?? "viewer");
           const nodeSlug = String(p.node_slug ?? p.slug ?? "");
@@ -204,6 +355,94 @@ export async function executeSurface(
       }
       continue;
     }
+    if (step.phase === "render") {
+      // Render-phase ops are read+compute+optionally-write. They run regardless
+      // of allowMutations because the actual destructive action (git commit /
+      // push) happens in a downstream stake step. render_template writes the
+      // file to disk so the stake step can pick it up via `git status`.
+      const p = interpolate(step.params ?? {}, params) as Record<string, unknown>;
+      switch (step.op) {
+        case "render_template": {
+          const TEMPLATE_DIR = "/home/ubuntu/code/viewer/templates";
+          const OUT_ALLOWLIST = ["/home/ubuntu/code/cntxos/"];
+          const templateName = String(p.template ?? "");
+          if (!templateName || templateName.includes("..") || templateName.startsWith("/")) {
+            throw new Error(`render_template: invalid template name: ${templateName}`);
+          }
+          let outFile = String(p.out_file ?? "");
+          if (!outFile) throw new Error("render_template: out_file required");
+          // Resolve relative out_file against the cntxos repo root by default.
+          if (!outFile.startsWith("/")) outFile = `/home/ubuntu/code/cntxos/${outFile}`;
+          if (!OUT_ALLOWLIST.some((a) => outFile.startsWith(a))) {
+            throw new Error(`render_template: out_file outside allowlist: ${outFile}`);
+          }
+          const diffOnly = Boolean(p.diff_only ?? false);
+          const { readFile, writeFile } = await import("fs/promises");
+          const { createHash } = await import("crypto");
+
+          const templatePath = `${TEMPLATE_DIR}/${templateName}`;
+          const tpl = await readFile(templatePath, "utf8");
+
+          // Build the render context: walk-step results so far, plus a few helpers.
+          const renderCtx: Record<string, unknown> = {
+            ...ctx,
+            now_iso: new Date().toISOString(),
+            today: new Date().toISOString().slice(0, 10),
+          };
+
+          // Preserve human-authored block from existing file if marker present.
+          let existing = "";
+          try { existing = await readFile(outFile, "utf8"); } catch { existing = ""; }
+          const humanMatch = existing.match(/<!-- BEGIN HUMAN -->[\s\S]*?<!-- END HUMAN -->/);
+          if (humanMatch) {
+            renderCtx.human_block = humanMatch[0];
+          } else {
+            renderCtx.human_block = "";
+          }
+
+          const rendered = renderTemplate(tpl, renderCtx);
+          const hash = createHash("sha256").update(rendered).digest("hex").slice(0, 16);
+
+          // Compute line-level diff count.
+          const oldLines = existing.split("\n");
+          const newLines = rendered.split("\n");
+          let diff = 0;
+          const max = Math.max(oldLines.length, newLines.length);
+          for (let i = 0; i < max; i++) if (oldLines[i] !== newLines[i]) diff++;
+          // For change-detection, ignore lines that are pure timestamp churn —
+          // anything containing an ISO-8601 instant. This makes cron runs
+          // idempotent when nothing else moved.
+          const STAMP_RE = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+          const stripStamps = (s: string) =>
+            s.split("\n").filter((l) => !STAMP_RE.test(l)).join("\n");
+          const changed = stripStamps(rendered) !== stripStamps(existing);
+
+          let wrote = false;
+          if (changed && !diffOnly) {
+            await writeFile(outFile, rendered, "utf8");
+            wrote = true;
+          } else if (changed && diffOnly) {
+            // diff_only means: do the write but don't push remotely. We still
+            // write to disk so the downstream git_commit_if_changed step sees
+            // the change. The flag is reserved for future "preview only" use.
+            await writeFile(outFile, rendered, "utf8");
+            wrote = true;
+          }
+
+          ctx[step.id] = {
+            rendered: changed,
+            diff_lines: diff,
+            out_file: outFile,
+            content_hash: hash,
+            wrote,
+          } satisfies RenderTemplateResult;
+          break;
+        }
+        default:
+          ctx[step.id] = { error: `unknown render op: ${step.op}` };
+      }
+      continue;
+    }
     if (step.phase !== "walk") continue;
     const p = interpolate(step.params ?? {}, params) as Record<string, unknown>;
 
@@ -211,7 +450,8 @@ export async function executeSurface(
       case "walk_scope":
       case "fetch_scope":
       case "list_nodes": {
-        const scope = String(p.scope ?? "root");
+        // Accept either `scope` (legacy) or `scope_prefix` (canonical).
+        const scope = String(p.scope ?? p.scope_prefix ?? "root");
         const limit = Number(p.limit ?? 50);
         const orderBy = p.order_by ? String(p.order_by) : "created_at";
         const asc = p.order_asc !== false;
@@ -227,9 +467,18 @@ export async function executeSurface(
           .limit(limit);
 
         if (p.node_type) q = q.eq("node_type", String(p.node_type));
-        if (p.status)    q = q.eq("status", String(p.status));
+        // `status` may be a single value or an array (e.g. ["canon","draft"]).
+        if (Array.isArray(p.status)) q = q.in("status", (p.status as unknown[]).map(String));
+        else if (p.status) q = q.eq("status", String(p.status));
         if (p.work_status) q = q.eq("work_status", String(p.work_status));
         if (p.claimed_by) q = q.eq("claimed_by", String(p.claimed_by));
+        // payload_work_status_in: filter on payload->>'work_status' IN (...).
+        if (Array.isArray(p.payload_work_status_in) && (p.payload_work_status_in as unknown[]).length > 0) {
+          const vals = (p.payload_work_status_in as unknown[]).map((v) => String(v));
+          // Top-level work_status column is the source of truth; payload mirror is
+          // legacy. Filter against top-level column when present.
+          q = q.in("work_status", vals);
+        }
 
         const { data } = await q;
         ctx[step.id] = data ?? [];

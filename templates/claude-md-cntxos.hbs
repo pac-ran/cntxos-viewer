@@ -1,0 +1,40 @@
+# CLAUDE.md — cntxos
+
+**Project:** cntxos
+**Substrate:** https://viewer.cntxos.com
+**Generated:** {{now_iso}}
+**Generator:** [wf-claude-md-render-cntxos](https://viewer.cntxos.com/n/wf-claude-md-render-cntxos)
+
+This file is rendered from substrate. Do not edit by hand outside the `<!-- BEGIN HUMAN --> ... <!-- END HUMAN -->` block (which is preserved across renders).
+
+{{human_block}}
+
+## Agent roster
+
+{{#each agents}}
+- **{{slug}}** — {{content_first_line}}
+{{/each}}
+
+## Active principles
+
+{{#each principles}}
+- [{{slug}}](https://viewer.cntxos.com/n/{{slug}}) — {{content_first_line}}
+{{/each}}
+
+## Active tasks
+
+{{#each active_tasks}}
+- [{{slug}}](https://viewer.cntxos.com/n/{{slug}}) — {{content_first_line}}
+{{/each}}
+
+## Recent canon promotions (last 10)
+
+{{#each recent_canon}}
+- {{occurred_at}} — {{payload.slug}}
+{{/each}}
+
+## Schema migration policy
+
+Schema changes (tables, columns, functions) must be committed as a SQL file in `supabase/migrations/` before or alongside the application code that uses them. Never apply schema changes via MCP without a corresponding migration file.
+
+<!-- generated {{now_iso}} by wf-claude-md-render-cntxos · do not edit by hand · regenerate via POST /api/cx-walk/run -->
