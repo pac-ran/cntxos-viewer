@@ -11,7 +11,7 @@
 // Fonts: Inter for messages + textarea, mono for stats / labels. Inter is
 // loaded by viewer's root layout via next/font/google with --font-inter.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import {
   computeCost,
@@ -1009,7 +1009,12 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   );
 }
 
-function TurnView({ turn }: { turn: ChatTurn }) {
+// Memoized so parent re-renders (e.g. every keystroke in the textarea
+// updating `draft`) do NOT re-render every turn in history. Without memo,
+// a long bloated turn (e.g. a DS tool-loop turn with pages of content) makes
+// typing visibly slow because dangerouslySetInnerHTML rebuilds the markdown
+// DOM tree per turn per keystroke.
+const TurnView = memo(function TurnView({ turn }: { turn: ChatTurn }) {
   const html = useMemo(() => {
     if (turn.role !== "assistant" || !turn.content) return "";
     try {
@@ -1069,11 +1074,11 @@ function TurnView({ turn }: { turn: ChatTurn }) {
       </div>
     </div>
   );
-}
+});
 
 // Tool-call chip — shown inline above assistant messages while DS reads/writes
 // substrate. Mono, dimmer, slight indent. Status icon flips on result arrival.
-function ToolCallChip({ tc }: { tc: ToolCallRecord }) {
+const ToolCallChip = memo(function ToolCallChip({ tc }: { tc: ToolCallRecord }) {
   // Compress args for display: prefer common keys, else truncate JSON.
   let argsText = "";
   try {
@@ -1117,7 +1122,7 @@ function ToolCallChip({ tc }: { tc: ToolCallRecord }) {
       )}
     </div>
   );
-}
+});
 
 // suppress unused warning for ORANGE_SOFT / ORANGE_DARK — reserved tokens.
 void ORANGE_SOFT;
