@@ -546,21 +546,26 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   const expanded = chatOpen;
 
   // Fixed-position chat-size strip — ALWAYS rendered (Randy 2026-05-12):
-  // 3 horizontal icons at bottom-right, persistent regardless of chat state.
-  // Replaces the standalone "Open chat" button + the in-header sizing cluster.
-  // z-50 so it sits above iframe content but below modal overlays.
-  // bottom-right placement intentionally avoids the workspace LAYOUT_PRESETS
-  // toolbar (top-right) — no occlusion.
+  // 3 text labels at bottom-right, persistent regardless of chat state.
+  // Glyph icons were confusing per Randy (close vs full vs split orientations);
+  // text labels are explicit. Pattern: "CHAT:" label + 3 state buttons.
+  // bottom-right placement avoids occlusion with workspace LAYOUT_PRESETS top-right.
   const sizeStrip = !mobile && (
     <div
-      className="fixed bottom-2 right-2 z-50 flex items-center gap-1 px-1.5 py-1 border shadow-md"
+      className="fixed bottom-2 right-2 z-50 flex items-center gap-1.5 px-2 py-1 border shadow-md"
       style={{ background: CREAM, borderColor: ORANGE, fontFamily: FONT_SANS }}
       title="Chat size"
     >
+      <span
+        className="text-[10px] font-semibold uppercase tracking-wider px-1"
+        style={{ color: ORANGE }}
+      >
+        chat
+      </span>
       {([
-        { id: "closed" as ChatSize, glyph: "▭", tooltip: "Close chat — viewer full" },
-        { id: "half" as ChatSize, glyph: "◫", tooltip: "Half — even split with viewer" },
-        { id: "full" as ChatSize, glyph: "■", tooltip: "Full — chat fills, viewer hidden" },
+        { id: "closed" as ChatSize, label: "closed", tooltip: "Close chat — viewer full" },
+        { id: "half" as ChatSize, label: "split", tooltip: "Split — even with viewer" },
+        { id: "full" as ChatSize, label: "full", tooltip: "Full — chat fills, viewer hidden" },
       ]).map((p) => {
         const active = chatSize === p.id;
         return (
@@ -570,14 +575,14 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
             onClick={() => setChatSize(p.id)}
             aria-label={p.tooltip}
             title={p.tooltip}
-            className="w-6 h-6 flex items-center justify-center text-[13px] leading-none border transition-colors"
+            className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 border transition-colors"
             style={
               active
                 ? { background: ORANGE, color: CREAM, borderColor: ORANGE }
                 : { background: "transparent", color: ORANGE, borderColor: ORANGE }
             }
           >
-            {p.glyph}
+            {p.label}
           </button>
         );
       })}
