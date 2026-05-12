@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
-import { deriveAffordances, filterByActor, type Affordance } from "@/lib/affordances";
 
 interface FrameSlot {
   name: string;
@@ -272,10 +271,11 @@ function SlotView({ slot, fill }: { slot: FrameSlot; fill: boolean }) {
   return <NodeSlotView ref_={slot.ref} name={slot.name} cls={cls} />;
 }
 
-// NodeAction was the legacy manual-config shape (node.payload.actions array).
-// Replaced 2026-05-12 by derived Affordances from src/lib/affordances.ts.
-// Per AC1 decision #5: P3 must explicitly delete the markdown-data-event
-// button parsing in NodeViewer + replace payload.actions manual config.
+interface NodeAction {
+  label: string;
+  field: string;
+  value: unknown;
+}
 
 // Walk slot — listens for cx-walk-rewalk window events (P2 of
 // pr-derive-walk-from-button) and force-reloads the iframe so the operator
@@ -302,12 +302,9 @@ function WalkSlotView({ slot, cls }: { slot: FrameSlot; cls: string }) {
 function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: string }) {
   const [html, setHtml] = useState<string | null>(null);
   const [nodePayload, setNodePayload] = useState<Record<string, unknown> | null>(null);
-  const [nodeStatus, setNodeStatus] = useState<string | null>(null);
-  const [nodeType, setNodeType] = useState<string | null>(null);
   const [nodeId, setNodeId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // role param drives gated affordance visibility (e.g. canon-promote only for randy/dl/ac1)
   const [role] = useState(() =>
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("role") ?? "randy"
@@ -321,13 +318,11 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
         .catch(() => ""),
       fetch(`/api/node/${ref_}`)
         .then(r => r.ok ? r.json() : null)
-        .then((d: { node?: { id?: string; node_type?: string; status?: string; payload?: Record<string, unknown> } } | null) => d?.node ?? null)
+        .then((d: { node?: { id?: string; payload?: Record<string, unknown> } } | null) => d?.node ?? null)
         .catch(() => null),
     ]);
     setHtml(htmlText);
     setNodePayload(nodeResult?.payload ?? null);
-    setNodeStatus(nodeResult?.status ?? null);
-    setNodeType(nodeResult?.node_type ?? null);
     if (nodeResult?.id) setNodeId(nodeResult.id);
   }, [ref_]);
 
@@ -353,60 +348,20 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
     return () => { sb.removeChannel(ch); };
   }, [nodeId, load]);
 
-  // Dispatch an affordance — branches by op type per pr-derive-walk-from-button.
-  // Replaces the legacy field/value action handler (which only knew about
-  // node-field updates). Now handles transitions, walk invocations, event
-  // posts, archives. After any mutation, re-load + signal walk slots to rewalk.
-  const handleAffordance = useCallback(async (a: Affordance) => {
+  const handleAction = useCallback(async (field: string, value: unknown) => {
     setActionError(null);
-    try {
-      if (a.op === "transition" && a.to) {
-        const res = await fetch("/api/node-update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: ref_, field: "status", value: a.to }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "transition failed");
-      } else if (a.op === "archive") {
-        const res = await fetch("/api/node-update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: ref_, field: "status", value: "archived" }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "archive failed");
-      } else if (a.op === "walk" && a.walk) {
-        const res = await fetch("/api/cx-walk/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ walk_slug: a.walk, anchor_slug: ref_, allow_mutations: true }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "walk failed");
-        // Signal walk slots to rewalk per pr-derive-walk-from-button instant-rewalk pattern
-        try { window.dispatchEvent(new Event("cx-walk-rewalk")); } catch { /* ignore */ }
-      } else if (a.op === "event" && a.event_kind) {
-        const res = await fetch("/api/cx-event", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            node_slug: ref_,
-            actor: role,
-            event_kind: a.event_kind,
-            atomic_op: "write",
-            outcome: a.outcome,
-            payload: a.payload ?? {},
-          }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "event post failed");
-      } else if (a.op === "edit") {
-        // Edit opens the node editor — TODO: wire to a workspace navigation event.
-        // For now, dispatch a custom window event so any open editor surface can pick it up.
-        try { window.dispatchEvent(new CustomEvent("cx-edit-node", { detail: { slug: ref_ } })); } catch { /* ignore */ }
-      }
-      await load();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+    const res = await fetch("/api/node-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: ref_, field, value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      setActionError(err.error ?? "Action failed");
+      return;
     }
-  }, [ref_, load, role]);
+    await load();
+  }, [ref_, load]);
 
   if (html === null) {
     return (
@@ -418,18 +373,9 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
 
   const lensText  = (nodePayload?.lenses as Record<string, string> | undefined)?.[role] ?? "";
   const nextText  = (nodePayload?.next   as Record<string, string> | undefined)?.[role] ?? "";
-  // Affordances are now DERIVED from node intrinsics (status + node_type +
-  // payload overrides), not configured per-node. Per pr-derive-walk-from-button
-  // P3 — replaces the old payload.actions manual config.
-  const affordances: Affordance[] = filterByActor(
-    deriveAffordances({
-      slug: ref_,
-      node_type: nodeType ?? undefined,
-      status: nodeStatus,
-      payload: nodePayload,
-    }),
-    role
-  );
+  const actionList: NodeAction[] = Array.isArray(nodePayload?.actions)
+    ? (nodePayload!.actions as NodeAction[])
+    : [];
 
   return (
     <div className={`${cls} flex flex-col`}>
@@ -458,16 +404,15 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
         </div>
       )}
 
-      {affordances.length > 0 && (
+      {actionList.length > 0 && (
         <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2">
-          {affordances.map((a, i) => (
+          {actionList.map((action, i) => (
             <button
-              key={`${a.op}-${a.label}-${i}`}
-              onClick={() => handleAffordance(a)}
-              title={a.op === "walk" ? `walk: ${a.walk}` : a.op === "transition" ? `→ ${a.to}` : a.op}
+              key={i}
+              onClick={() => handleAction(action.field, action.value)}
               className="font-mono text-[10px] border border-rule/40 px-2 py-0.5 hover:border-rule/80 text-muted hover:text-ink transition-colors"
             >
-              {a.label}
+              {action.label}
             </button>
           ))}
           {actionError && (

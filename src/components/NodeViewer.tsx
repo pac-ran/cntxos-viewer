@@ -1,18 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import ReactMarkdown from "react-markdown";
+import type { Plugin } from "unified";
+import type { Root, ListItem, Paragraph, Text } from "mdast";
+import { visit } from "unist-util-visit";
 
 type WorkStatus = "inbox" | "in-progress" | "done";
-
-// 2026-05-12 P3 — markdown-data-event interactive slots DELETED per AC1 decision.
-// The old pattern parsed `- [ ] option {event: "x", value: "y"}` syntax in
-// markdown content into clickable checkbox buttons. It's now replaced by
-// affordance-derived buttons rendered in NodeSlotView (WrapperPanel.tsx) via
-// deriveAffordances() in @/lib/affordances. Buttons emerge from node intrinsics
-// (status + node_type + payload overrides), not from markdown content syntax.
-// If you need an inline interactive element, drop a walk slot or a url slot.
 
 interface NodeRow {
   id: string;
@@ -40,7 +35,50 @@ const STATUS_LABELS: Record<WorkStatus, string> = {
   done: "done",
 };
 
-// (Old SLOT_PATTERN + remarkInteractiveSlots plugin removed 2026-05-12 P3.)
+// Pattern: - [ ] option text {event: "choice", value: "option-a"}
+const SLOT_PATTERN = /^\s*\[?\s*\]\s*(.*?)\s*\{event:\s*"([^"]+)",\s*value:\s*"([^"]+)"\s*\}\s*$/;
+
+// Remark plugin: detect interactive slot syntax in list items and annotate with hProperties
+const remarkInteractiveSlots: Plugin<[], Root> = () => (tree: Root) => {
+  visit(tree, "listItem", (node: ListItem) => {
+    // Only process unchecked checkbox items (checked === false or null/undefined)
+    if (node.checked !== false && node.checked !== null && node.checked !== undefined) return;
+
+    // Get the text content of the first paragraph child
+    const firstChild = node.children[0];
+    if (!firstChild || firstChild.type !== "paragraph") return;
+    const para = firstChild as Paragraph;
+    const firstText = para.children[0];
+    if (!firstText || firstText.type !== "text") return;
+    const textNode = firstText as Text;
+
+    // Full text of the list item (may span multiple text nodes)
+    const fullText = para.children
+      .map(c => (c.type === "text" ? c.value : ""))
+      .join("");
+
+    const match = SLOT_PATTERN.exec(fullText);
+    if (!match) return;
+
+    const [, label, eventKind, value] = match;
+
+    // Annotate node so mdast-util-to-hast passes data attributes to the <li>
+    if (!node.data) node.data = {};
+    node.data.hProperties = {
+      "data-slot": "true",
+      "data-event": eventKind,
+      "data-value": value,
+      "data-label": label.trim(),
+    };
+
+    // Replace paragraph children with just the label text (no checkbox prefix)
+    textNode.value = label.trim();
+    // Remove remaining text nodes that were part of the pattern
+    if (para.children.length > 1) {
+      para.children = [textNode];
+    }
+  });
+};
 
 export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void }) {
   const [node, setNode] = useState<NodeRow | null>(null);
@@ -61,9 +99,60 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
     setEvents(evts ?? []);
   }, [slug]);
 
-  // 2026-05-12 P3: postSlotEvent removed. Derived affordances in
-  // WrapperPanel/NodeSlotView handle button → walk dispatch now (per
-  // pr-derive-walk-from-button + p-buttons-emerge-from-node-shape canon).
+  const postSlotEvent = useCallback(async (eventKind: string, value: string, suppressWalk: boolean) => {
+    // 1. Always post the answer event (legacy behavior).
+    await fetch("/api/node/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug,
+        actor: "viewer",
+        event_kind: "answer",
+        payload: { [eventKind]: value },
+      }),
+    });
+
+    // 2. Opt-out walk derivation (P2 of pr-derive-walk-from-button).
+    // Try wf-${eventKind}-${node_type} then wf-${eventKind}. Fire if a walk
+    // exists AND the slot didn't set data-suppress-walk="true".
+    if (!suppressWalk && node) {
+      const candidates = [
+        `wf-${eventKind}-${node.node_type}`,
+        `wf-${eventKind}`,
+      ];
+      let firedSlug: string | null = null;
+      for (const candidate of candidates) {
+        try {
+          const actor = typeof window !== "undefined"
+            ? (new URLSearchParams(window.location.search).get("actor") ?? "viewer")
+            : "viewer";
+          const res = await fetch("/api/cx-walk/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              walk_slug: candidate,
+              anchor_slug: slug,
+              params: { viewer_actor: actor, value },
+            }),
+          });
+          if (res.status === 404) continue; // try next candidate
+          firedSlug = candidate;
+          break;
+        } catch {
+          // network error — try next candidate
+        }
+      }
+      // 3. Dispatch instant rewalk signal so any walk slot listening reloads.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("cx-walk-rewalk", {
+          detail: { near: firedSlug ?? slug, anchor_slug: slug, event_kind: eventKind },
+        }));
+      }
+    }
+
+    // Reload activity feed after posting
+    load();
+  }, [slug, load, node]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -82,8 +171,38 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
     return () => { supabase.removeChannel(channel); };
   }, [node?.id, load]);
 
-  // (Custom markdown li renderer removed 2026-05-12 P3 — no more in-content
-  // interactive slots. ReactMarkdown renders lists with defaults now.)
+  // Build markdown components map with custom li for interactive slots
+  const markdownComponents = useMemo(() => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    li({ children, ...props }: React.ComponentPropsWithoutRef<"li"> & { node?: any }) {
+      const eventKind = (props as Record<string, unknown>)["data-event"] as string | undefined;
+      const value = (props as Record<string, unknown>)["data-value"] as string | undefined;
+      const label = (props as Record<string, unknown>)["data-label"] as string | undefined;
+      const suppressWalk = (props as Record<string, unknown>)["data-suppress-walk"] === "true";
+
+      if (eventKind && value) {
+        // Interactive slot — render as a checkbox button
+        return (
+          <li className="list-none flex items-center gap-2 py-1" data-suppress-walk={suppressWalk ? "true" : undefined}>
+            <input
+              type="checkbox"
+              className="cursor-pointer accent-accent w-4 h-4"
+              data-suppress-walk={suppressWalk ? "true" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                postSlotEvent(eventKind, value, suppressWalk);
+              }}
+              readOnly
+            />
+            <span className="text-[13px] text-ink">{label ?? children}</span>
+          </li>
+        );
+      }
+
+      // Normal list item
+      return <li {...props}>{children}</li>;
+    },
+  }), [postSlotEvent]);
 
   if (notFound) {
     return (
@@ -157,7 +276,10 @@ export function NodeViewer({ slug, onEdit }: { slug: string; onEdit: () => void 
         {/* Content */}
         {node.content ? (
           <div className="prose-node">
-            <ReactMarkdown>{node.content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkInteractiveSlots]}
+              components={markdownComponents}
+            >{node.content}</ReactMarkdown>
           </div>
         ) : (
           <div className="text-[13px] text-dim italic">no content</div>
