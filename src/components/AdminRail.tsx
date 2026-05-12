@@ -116,16 +116,6 @@ const MENU: MenuItem[] = [
       { label: "Active", slug: "s-listings-active" },
     ],
   },
-  {
-    key: "etsy",
-    label: "Etsy",
-    // shop / storefront glyph
-    icon: "M3 9l1-5h16l1 5|M5 9v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9|M9 22V12h6v10",
-    // External URL — special-cased in navigate(): docks the admin page in
-    // the main slot via set_pane so the Etsy page renders inside the viewer.
-    slug: "external:https://cntxos.com/admin/etsy",
-    submenu: [],
-  },
 ];
 
 // 2026-05-10 v2 design pass (Randy): cream everywhere, orange accent only.
@@ -179,27 +169,6 @@ export function AdminRail({ currentSlug, actor }: Props) {
 
   const navigate = useCallback((slug: string) => {
     setHoverKey(null);
-    // external:<url> — dock into the main slot via set_pane (pane primitive
-    // pattern per pr-pane-primitive-contract-v1). The URL renders as an
-    // iframe in the actor's main viewer slot. No route change in the rail.
-    if (slug.startsWith("external:")) {
-      const url = slug.slice("external:".length);
-      const ref = url; // url slot ref is the URL itself
-      // Fire-and-forget set_pane via cx-event endpoint (substrate-side RPC).
-      fetch("/api/cx-event", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          node_slug: `conv-frame-state-${actor || "randy"}`,
-          actor: "rail",
-          event_kind: "frame-update",
-          atomic_op: "render",
-          outcome: `set_pane:rail->${actor || "randy"}`,
-          payload: { mode: "replace", slots: [{ name: "main", type: "url", ref }] },
-        }),
-      }).catch(() => { /* soft fail */ });
-      return;
-    }
     const sp = new URLSearchParams();
     if (actor) sp.set("actor", actor);
     const qs = sp.toString();
