@@ -21,10 +21,28 @@ export default function MobileViewerPage() {
   const chatHref = actor
     ? `/m/chat?actor=${encodeURIComponent(actor)}`
     : `/m/chat`;
+  // Return to desktop workspace shell (cross-domain: viewer.cntxos.com → cntxos.com).
+  const desktopHref = actor
+    ? `https://cntxos.com/workspace/${encodeURIComponent(actor)}`
+    : `https://cntxos.com/`;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden" style={{ background: CONTENT_BG }}>
       <WrapperPanel />
+      <a
+        href={desktopHref}
+        className="fixed top-2 left-2 z-50 text-[12px] px-3 py-1.5 border shadow-md"
+        style={{
+          borderColor: ORANGE,
+          color: ORANGE,
+          background: CONTENT_BG,
+          textDecoration: "none",
+          fontFamily: 'var(--font-inter), ui-sans-serif, system-ui, sans-serif',
+        }}
+        title="Back to desktop workspace"
+      >
+        ← desktop
+      </a>
       <a
         href={chatHref}
         className="fixed top-2 right-2 z-50 text-[12px] px-3 py-1.5 border shadow-md"

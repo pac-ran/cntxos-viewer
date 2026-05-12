@@ -22,10 +22,29 @@ export default function MobileChatPage() {
   const viewerHref = actor
     ? `/m/viewer?actor=${encodeURIComponent(actor)}`
     : `/m/viewer`;
+  // Return to desktop workspace shell. /m/* lives on viewer.cntxos.com;
+  // workspace shell lives on cntxos.com.
+  const desktopHref = actor
+    ? `https://cntxos.com/workspace/${encodeURIComponent(actor)}`
+    : `https://cntxos.com/`;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden" style={{ background: CONTENT_BG }}>
       <ChatPane mobile />
+      <a
+        href={desktopHref}
+        className="fixed top-2 left-2 z-50 text-[12px] px-3 py-1.5 border shadow-md"
+        style={{
+          borderColor: ORANGE,
+          color: ORANGE,
+          background: CONTENT_BG,
+          textDecoration: "none",
+          fontFamily: 'var(--font-inter), ui-sans-serif, system-ui, sans-serif',
+        }}
+        title="Back to desktop workspace"
+      >
+        ← desktop
+      </a>
       <a
         href={viewerHref}
         className="fixed top-2 right-2 z-50 text-[12px] px-3 py-1.5 border shadow-md"
