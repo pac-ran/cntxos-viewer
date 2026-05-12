@@ -545,36 +545,59 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   // No focus-or-content magic. Aliased to "expanded" to keep downstream JSX small.
   const expanded = chatOpen;
 
-  // Closed state (Randy 2026-05-10 v2): no reserved band, no empty cream
-  // rectangle. Render a small floating "Open chat" button anchored bottom-right
-  // of the viewport so the viewer pane fills the full height. The parent
-  // (pane/agent/page.tsx) listens to the same localStorage key and removes
-  // the chat region from the layout entirely.
+  // Fixed-position chat-size strip — ALWAYS rendered (Randy 2026-05-12):
+  // 3 horizontal icons at bottom-right, persistent regardless of chat state.
+  // Replaces the standalone "Open chat" button + the in-header sizing cluster.
+  // z-50 so it sits above iframe content but below modal overlays.
+  // bottom-right placement intentionally avoids the workspace LAYOUT_PRESETS
+  // toolbar (top-right) — no occlusion.
+  const sizeStrip = !mobile && (
+    <div
+      className="fixed bottom-2 right-2 z-50 flex items-center gap-1 px-1.5 py-1 border shadow-md"
+      style={{ background: CREAM, borderColor: ORANGE, fontFamily: FONT_SANS }}
+      title="Chat size"
+    >
+      {([
+        { id: "closed" as ChatSize, glyph: "▭", tooltip: "Close chat — viewer full" },
+        { id: "half" as ChatSize, glyph: "◫", tooltip: "Half — even split with viewer" },
+        { id: "full" as ChatSize, glyph: "■", tooltip: "Full — chat fills, viewer hidden" },
+      ]).map((p) => {
+        const active = chatSize === p.id;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => setChatSize(p.id)}
+            aria-label={p.tooltip}
+            title={p.tooltip}
+            className="w-6 h-6 flex items-center justify-center text-[13px] leading-none border transition-colors"
+            style={
+              active
+                ? { background: ORANGE, color: CREAM, borderColor: ORANGE }
+                : { background: "transparent", color: ORANGE, borderColor: ORANGE }
+            }
+          >
+            {p.glyph}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  // Closed state — only the floating strip is visible (parent layout omits
+  // the chat region per pane/agent/page when chatSize=closed).
   if (!chatOpen && !mobile) {
-    return (
-      <button
-        type="button"
-        onClick={() => setChatOpen(true)}
-        className="fixed bottom-2 right-2 z-50 text-[12px] px-3 py-1.5 border transition-colors shadow-md"
-        style={{
-          borderColor: ORANGE,
-          color: ORANGE,
-          background: CREAM,
-          fontFamily: FONT_SANS,
-        }}
-        title="Open chat"
-      >
-        Open chat
-      </button>
-    );
+    return sizeStrip;
   }
 
   return (
+    <>
+    {sizeStrip}
     <div
       className="flex flex-col h-full transition-all duration-200 ease-out"
       style={{ background: CHAT_BG, color: INK, fontFamily: FONT_SANS }}
     >
-      {/* Header — title + close. Deliberate, not cute. */}
+      {/* Header — title only. Sizing icons are in the floating strip (bottom-right). */}
       <div
         className="shrink-0 flex items-center justify-between px-3 py-1.5 border-b"
         style={{ borderColor: `${RULE}80`, background: CHAT_BG }}
@@ -599,34 +622,8 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
             chat
           </span>
         </div>
-        {!mobile && (
-          <div className="flex items-center gap-1" title="Chat size">
-            {([
-              { id: "closed" as ChatSize, glyph: "▭", tooltip: "Close chat — viewer full" },
-              { id: "half" as ChatSize, glyph: "◫", tooltip: "Half — even split with viewer" },
-              { id: "full" as ChatSize, glyph: "■", tooltip: "Full — chat fills, viewer hidden" },
-            ]).map((p) => {
-              const active = chatSize === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setChatSize(p.id)}
-                  aria-label={p.tooltip}
-                  title={p.tooltip}
-                  className="w-6 h-6 flex items-center justify-center text-[13px] leading-none border transition-colors"
-                  style={
-                    active
-                      ? { background: ORANGE, color: CREAM, borderColor: ORANGE }
-                      : { background: "transparent", color: INK, borderColor: `${RULE}80` }
-                  }
-                >
-                  {p.glyph}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {/* Sizing icons live in the persistent floating strip (bottom-right),
+            not in the header — see sizeStrip above. */}
       </div>
 
       {/* Body — sidebar (sessions) + main column (thread/input/controls) */}
@@ -1031,6 +1028,7 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
       </div>
       </div>
     </div>
+    </>
   );
 }
 

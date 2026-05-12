@@ -13,16 +13,44 @@ import { useRouter } from "next/navigation";
 interface MenuItem {
   key: string;
   label: string;
-  icon: string;
+  // Lucide-style inline SVG paths (24x24 viewport, stroke-based). Using
+  // currentColor on stroke means CSS color controls the icon. Emoji glyphs
+  // can NOT be color-controlled (their baked-in multicolor renders ignore
+  // CSS color), which is why earlier rail-color CSS had no visible effect.
+  // Randy 2026-05-12.
+  icon: string; // SVG path d-attribute(s)
   slug: string;
   submenu: { label: string; slug: string }[];
+}
+
+// Inline SVG renderer — applies parent currentColor. Each icon path is a
+// Lucide-style 24x24 stroke-based glyph.
+function RailIcon({ d, size = 18 }: { d: string; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* Each path comma-separated → split + render */}
+      {d.split("|").map((p, i) => (
+        <path key={i} d={p} />
+      ))}
+    </svg>
+  );
 }
 
 const MENU: MenuItem[] = [
   {
     key: "files",
     label: "Files",
-    icon: "📁",
+    icon: "M4 4h6l2 2h8v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
     slug: "s-files-index",
     submenu: [
       { label: "All files", slug: "s-files-index" },
@@ -34,7 +62,7 @@ const MENU: MenuItem[] = [
   {
     key: "links",
     label: "Links",
-    icon: "🔗",
+    icon: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71|M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
     slug: "s-links-index",
     submenu: [
       { label: "All links", slug: "s-links-index" },
@@ -45,7 +73,7 @@ const MENU: MenuItem[] = [
   {
     key: "connections",
     label: "Connections",
-    icon: "🔌",
+    icon: "M9 2v6|M15 2v6|M12 8v8a4 4 0 0 0 4 4h0|M8 8h12v3a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z",
     slug: "s-connections-index",
     submenu: [
       { label: "Etsy", slug: "s-connections-etsy" },
@@ -57,7 +85,7 @@ const MENU: MenuItem[] = [
   {
     key: "projects",
     label: "Projects",
-    icon: "📋",
+    icon: "M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z|M5 5h14a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z|M8 11h8|M8 15h5",
     slug: "s-projects-index",
     submenu: [
       { label: "All projects", slug: "s-projects-index" },
@@ -68,7 +96,7 @@ const MENU: MenuItem[] = [
   {
     key: "crm",
     label: "CRM",
-    icon: "👥",
+    icon: "M16 17v-2a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v2|M9 9a4 4 0 1 0 0-8 4 4 0 0 0 0 8z|M22 17v-2a3 3 0 0 0-2.25-2.9|M16 1.13a4 4 0 0 1 0 7.75",
     slug: "s-crm-index",
     submenu: [
       { label: "Contacts", slug: "s-crm-contacts" },
@@ -79,7 +107,7 @@ const MENU: MenuItem[] = [
   {
     key: "listings",
     label: "Listings",
-    icon: "🏷️",
+    icon: "M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z|M7 7h.01",
     slug: "s-listings-index",
     submenu: [
       { label: "All listings", slug: "s-listings-index" },
@@ -209,8 +237,8 @@ export function AdminRail({ currentSlug, actor }: Props) {
                 }}
                 title={item.label}
               >
-                <span className="text-[18px] shrink-0 w-6 text-center" aria-hidden>
-                  {item.icon}
+                <span className="shrink-0 w-6 flex items-center justify-center" aria-hidden>
+                  <RailIcon d={item.icon} />
                 </span>
                 {expanded && (
                   <span
