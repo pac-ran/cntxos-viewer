@@ -25,6 +25,13 @@ const PUBLIC_API_PATHS = [
   "/api/node/create",
   "/api/node/update",
   "/api/node/delete",
+  // Surface proxy (Randy 2026-05-12): /api/surface/[name] is a CSP-stripping
+  // passthrough for Supabase edge functions. The edge function IS the
+  // security boundary (verify_jwt + own auth). Proxy must be unauthenticated
+  // so iframes can load it cross-subdomain (cntxos.com → viewer.cntxos.com)
+  // without carrying a session cookie. Proxy doesn't read auth state and
+  // only fetches public edge function URLs.
+  "/api/surface/",
 ];
 
 function isPublicApi(pathname: string): boolean {
