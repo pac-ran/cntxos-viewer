@@ -5,7 +5,7 @@ import { getBrowserSupabase } from "@/lib/supabase-browser";
 
 interface FrameSlot {
   name: string;
-  type: "surface" | "node" | "stream" | "walk";
+  type: "surface" | "node" | "stream" | "walk" | "url";
   ref: string;
   anchor_slug?: string;
 }
@@ -77,6 +77,35 @@ export function WrapperPanel() {
 
     return () => { sb.removeChannel(ch); };
   }, [convId]);
+
+  // frame-ack — emit a substrate event after every slot change so agents
+  // have a return signal from the viewer. Per AC2 g-frame-ack-events-from-viewer
+  // + ac2 stake 2026-05-12T01:43Z. Payload reports slot_count + known per-slot
+  // status (slug resolution lives in NodeSlotView; we report what we know at
+  // the viewer level — render attempt happened, slot count is N).
+  useEffect(() => {
+    if (!convId || !slots) return;
+    const ackPayload = {
+      slot_count: slots.length,
+      slot_types: slots.map(s => s.type),
+      slot_names: slots.map(s => s.name),
+      actor_for: actor,
+      success: true,
+    };
+    // Fire-and-forget. Failure to post ack is a soft failure — log only.
+    fetch("/api/cx-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        node_slug: `conv-frame-state-${actor ?? "shared"}`,
+        actor: "viewer",
+        event_kind: "frame-ack",
+        atomic_op: "render",
+        outcome: slots.length > 0 ? "success" : "empty",
+        payload: ackPayload,
+      }),
+    }).catch(() => { /* soft fail */ });
+  }, [slots, convId, actor]);
 
   const layout = deriveLayout(slots?.length ?? 0);
 
@@ -209,6 +238,19 @@ function SlotView({ slot, fill }: { slot: FrameSlot; fill: boolean }) {
 
   if (slot.type === "walk") {
     return <WalkSlotView slot={slot} cls={cls} />;
+  }
+
+  if (slot.type === "url") {
+    // Renders any URL as an iframe — agent-deployed surfaces (Supabase edge
+    // functions, external pages). Per AC2 set_pane url slot type 2026-05-12.
+    return (
+      <iframe
+        src={slot.ref}
+        className={`${cls} border-0`}
+        title={`slot:${slot.name}`}
+        sandbox="allow-scripts allow-same-origin allow-forms"
+      />
+    );
   }
 
   if (slot.type === "stream") {
