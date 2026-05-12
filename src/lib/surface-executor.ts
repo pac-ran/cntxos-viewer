@@ -10,7 +10,7 @@ export type RenderShape =
   | "table" | "kanban" | "card-grid" | "dashboard"
   | "activity-stream" | "list" | "prose" | "approval-queue" | "mermaid"
   | "file-browser" | "cluster-state" | "intercom-events" | "box-health"
-  | "event-stream";
+  | "event-stream" | "timeline" | "tree" | "none";
 
 export interface SurfaceStep {
   id: string;
@@ -49,6 +49,10 @@ export interface SurfaceResult {
   columns?: string[];
   group_by?: string;
   data: Record<string, unknown>;
+  // Optional render-shape-specific fields (referenced by cx-surface route renderers)
+  time_field?: string;
+  label_field?: string;
+  root_scope?: string;
 }
 
 // Module-level walk-result cache (P1 of pr-walk-slot-type convergence build).
