@@ -498,34 +498,19 @@ const ARCHIVE_NODE: Tool = {
   },
 };
 
-// ─── Tool: delete_node ────────────────────────────────────────────────────
-
-const DELETE_NODE: Tool = {
-  atomic_op: "write",
-  def: {
-    type: "function",
-    function: {
-      name: "delete_node",
-      description: "Hard-delete a node and its events. Requires confirm:true. Irreversible.",
-      parameters: {
-        type: "object",
-        properties: {
-          slug: { type: "string" },
-          confirm: { type: "boolean", description: "Must be true." },
-        },
-        required: ["slug", "confirm"],
-      },
-    },
-  },
-  exec: async (args) => {
-    if (args.confirm !== true) return { error: "confirm must be true to delete" };
-    const slug = String(args.slug ?? "");
-    const sb = getServerSupabase();
-    const { data, error } = await sb.rpc("admin_node_hard_delete", { p_slug: slug });
-    if (error) return { error: error.message };
-    return data;
-  },
-};
+// ─── delete_node — REMOVED per DL directive 2026-05-13 ─────────────────────
+//
+// Per p-focused-surface-exhaustive-memory (canon) and p-forbidden-event-verbs
+// (canon, dl-approved): the substrate does not destroy. Hard-delete tools at
+// the agent layer make the event-layer enforcement theater. DS now relies on
+// archive (reversible, per-actor, audit-trail-preserved) for any "remove
+// from view" verb. If a true hard-delete is ever required, it goes through
+// a direct admin SQL operation under explicit Randy approval — not through
+// an agent tool definition.
+//
+// Follow-up for AC2: drop admin_node_hard_delete RPC at the substrate layer
+// for defense in depth. Tracked under d-substrate-enforcement-and-unified-
+// verbs-2026-05-13 (canon, L1 enforcement).
 
 // ─── Tool: run_walk ───────────────────────────────────────────────────────
 
@@ -729,7 +714,8 @@ const TOOLS: Record<string, Tool> = {
   write_node: WRITE_NODE,
   post_event: POST_EVENT,
   archive_node: ARCHIVE_NODE,
-  delete_node: DELETE_NODE,
+  // delete_node removed 2026-05-13 — see comment block where DELETE_NODE
+  // const used to live. Archive (reversible) is the canonical pattern.
   run_walk: RUN_WALK,
   // set_left_pane intentionally omitted — LEFT pane is user/org CRUD only.
   // Agent does NOT drive LEFT (Randy 2026-05-09). Tool body remains in file
