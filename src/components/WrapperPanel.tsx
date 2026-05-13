@@ -398,9 +398,19 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
         });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "event post failed");
       } else if (a.op === "edit") {
-        // Edit opens the node editor — TODO: wire to a workspace navigation event.
-        // For now, dispatch a custom window event so any open editor surface can pick it up.
-        try { window.dispatchEvent(new CustomEvent("cx-edit-node", { detail: { slug: ref_ } })); } catch { /* ignore */ }
+        // Edit opens the node in the cntxos workspace's NodeEditor shape.
+        // The viewer renders inside a workspace iframe, so we postMessage
+        // up to the parent. The workspace listens and swaps its left-pane
+        // shape to node-editor for this slug. Custom events don't cross
+        // iframe boundaries; postMessage does.
+        try {
+          if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "cx-edit-node", slug: ref_ }, "*");
+          } else {
+            // Fallback for standalone viewer page (not embedded): same-window event
+            window.dispatchEvent(new CustomEvent("cx-edit-node", { detail: { slug: ref_ } }));
+          }
+        } catch { /* ignore */ }
       }
       await load();
     } catch (err) {
@@ -476,7 +486,7 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
                       : a.op === "walk"
                         ? `Run walk: ${a.walk}.`
                         : a.op === "edit"
-                          ? "Open the editor for this node."
+                          ? "Open this node in the cntxos workspace editor (left pane). Edit content + tags, save back to substrate."
                           : a.op === "archive"
                             ? "Archive: hide from default views, keep in substrate. Reversible."
                             : a.op;
