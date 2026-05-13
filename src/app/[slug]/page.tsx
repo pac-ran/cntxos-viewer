@@ -146,9 +146,19 @@ export default function NodePage({ params }: Props) {
     router.push(`/${targetSlug}${qs ? `?${qs}` : ""}`);
   }, [router, actor]);
 
+  // Detect iframe — when this viewer page is embedded inside cntxos
+  // workspace, the workspace already provides its own AdminRail. Showing
+  // viewer's rail too gives the operator two stacked rails. Per Randy
+  // 2026-05-13: 'we've duplicated the admin rail'. Outer rail wins.
+  const [isEmbedded, setIsEmbedded] = useState(false);
+  useEffect(() => {
+    try { setIsEmbedded(typeof window !== "undefined" && window.parent !== window); }
+    catch { setIsEmbedded(false); }
+  }, []);
+
   return (
     <div className="flex h-full w-full min-h-0">
-      <AdminRail currentSlug={slug} actor={actor} />
+      {!isEmbedded && <AdminRail currentSlug={slug} actor={actor} />}
       <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
       {/* Pane header with search + new button.
           Randy 2026-05-09: full-strength ink border on the search box; the
