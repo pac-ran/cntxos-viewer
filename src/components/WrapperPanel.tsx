@@ -460,16 +460,38 @@ function NodeSlotView({ ref_, name, cls }: { ref_: string; name: string; cls: st
 
       {affordances.length > 0 && (
         <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2">
-          {affordances.map((a, i) => (
-            <button
-              key={`${a.op}-${a.label}-${i}`}
-              onClick={() => handleAffordance(a)}
-              title={a.op === "walk" ? `walk: ${a.walk}` : a.op === "transition" ? `→ ${a.to}` : a.op}
-              className="font-mono text-[10px] border border-rule/40 px-2 py-0.5 hover:border-rule/80 text-muted hover:text-ink transition-colors"
-            >
-              {a.label}
-            </button>
-          ))}
+          {affordances.map((a, i) => {
+            // Plain-English explanation of what the click will do, per
+            // Randy 2026-05-13: "if they are buttons, please fix them and
+            // put some help text so we know what they do".
+            const helpText =
+              a.op === "transition" && a.to === "review"
+                ? "Submit this draft for review. Status changes from draft to review."
+                : a.op === "transition" && a.to === "canon"
+                  ? "Promote this node to canon (the durable, walked truth). Reversible by sending back to draft."
+                  : a.op === "transition" && a.to === "draft"
+                    ? "Send this back to draft so the author can keep editing."
+                    : a.op === "transition"
+                      ? `Change status to ${a.to}.`
+                      : a.op === "walk"
+                        ? `Run walk: ${a.walk}.`
+                        : a.op === "edit"
+                          ? "Open the editor for this node."
+                          : a.op === "archive"
+                            ? "Archive: hide from default views, keep in substrate. Reversible."
+                            : a.op;
+            return (
+              <button
+                key={`${a.op}-${a.label}-${i}`}
+                onClick={() => handleAffordance(a)}
+                title={helpText}
+                aria-label={`${a.label} — ${helpText}`}
+                className="font-mono text-[10px] border border-rule/40 px-2 py-0.5 hover:border-rule/80 text-muted hover:text-ink transition-colors"
+              >
+                {a.label}
+              </button>
+            );
+          })}
           {actionError && (
             <span className="font-mono text-[10px] text-red-400">{actionError}</span>
           )}

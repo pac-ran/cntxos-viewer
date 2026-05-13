@@ -1253,9 +1253,13 @@ export async function GET(
   .cxs .header{margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #C2410C}
   .cxs .surface-title{font-family:Georgia,'Source Serif 4',serif;font-size:28px;font-weight:700;color:#1A1A1A;line-height:1.2;margin-bottom:6px}
   .cxs .slug{font-family:'JetBrains Mono','Courier New',monospace;font-size:12px;font-weight:600;color:#6B6558;letter-spacing:.05em}
-  .cxs .badges{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
-  .cxs .badge{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;font-weight:700;border:1.5px solid #B8B09C;padding:3px 8px;color:#6B6558;text-transform:uppercase;letter-spacing:.1em;background:#fff}
-  .cxs .badge-canon{border-color:#C2410C;color:#C2410C;background:rgba(194,65,12,0.06)}
+  .cxs .badges{display:flex;gap:14px;align-items:baseline;margin-top:10px;flex-wrap:wrap;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px}
+  /* Flat metadata labels (Randy 2026-05-13: bordered chips read as buttons —
+     these are read-only metadata, not actions). Inline-text with a dim
+     prefix and a colored value. Matches the NodeViewer.tsx pattern. */
+  .cxs .badge{color:#1A1A1A}
+  .cxs .badge-prefix{color:#6B6558;margin-right:4px;text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+  .cxs .badge-canon{color:#15803d;font-weight:600}
   .cxs .scope{font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;color:#6B6558;margin-top:8px;letter-spacing:.05em}
 
   .cxs .content{color:#1A1A1A}
@@ -1287,15 +1291,15 @@ export async function GET(
     : `<div class="surface-title">${escapeHtml(n.slug)}</div>`;
 
   const shapeLabel = isSurface
-    ? `<span class="badge" style="border-color:#C2410C;color:#C2410C;background:rgba(194,65,12,0.06)">${escapeHtml(String(payload.render_shape ?? "surface"))}</span>`
+    ? `<span class="badge"><span class="badge-prefix">shape:</span>${escapeHtml(String(payload.render_shape ?? "surface"))}</span>`
     : "";
 
   const body = `
   <div class="header">
     ${headerTitle}
     <div class="badges">
-      <span class="badge">${escapeHtml(n.node_type)}</span>
-      <span class="badge ${n.status === "canon" ? "badge-canon" : ""}">${escapeHtml(n.status)}</span>
+      <span class="badge"><span class="badge-prefix">type:</span>${escapeHtml(n.node_type)}</span>
+      <span class="badge ${n.status === "canon" ? "badge-canon" : ""}"><span class="badge-prefix">status:</span>${escapeHtml(n.status)}</span>
       ${shapeLabel}
     </div>
     <div class="scope">${escapeHtml(n.scope)}</div>
