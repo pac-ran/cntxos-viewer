@@ -185,13 +185,7 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [renamingSlug, setRenamingSlug] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
-  const [menuOpenSlug, setMenuOpenSlug] = useState<string | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -210,19 +204,18 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
   // Persist active session per actor.
   const activeKey = actor ? `chat-active-session-${actor}` : null;
 
-  const refreshSessions = useCallback(async (): Promise<SessionRow[]> => {
-    if (!actor) return [];
+  const refreshSessions = useCallback(async (): Promise<void> => {
+    if (!actor) return;
     try {
       const res = await fetch(`/api/broker/sessions?actor=${encodeURIComponent(actor)}`);
-      if (!res.ok) return [];
+      if (!res.ok) return;
       const data = (await res.json()) as { sessions?: SessionRow[] };
       const list = data.sessions ?? [];
-      setSessions(list);
-      return list;
-    } catch {
-      return [];
-    }
-  }, [actor]);
+      // If active session was the first one, update to latest first session title
+      // (auto-title fires in background after first exchange)
+      if (!activeSlug && list[0]?.slug) setActiveSlug(list[0].slug);
+    } catch { /* non-blocking */ }
+  }, [actor, activeSlug]);
 
   const loadMessages = useCallback(async (slug: string) => {
     try {
@@ -265,21 +258,30 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
     }
   }, []);
 
-  // Initial mount: load sessions, restore active selection.
+  // Initial mount: restore active session + load messages.
   useEffect(() => {
     if (!actor) return;
     (async () => {
-      const list = await refreshSessions();
+      // Try stored session first, then fetch sessions list for latest slug
       const stored = activeKey ? localStorage.getItem(activeKey) : null;
-      const exists = stored && list.some((s) => s.slug === stored);
-      const target =
-        exists ? stored! :
-        list[0]?.slug ??
-        `conv-broker-${actor}`;
-      setActiveSlug(target);
-      await loadMessages(target);
+      if (stored) {
+        setActiveSlug(stored);
+        await loadMessages(stored);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/broker/sessions?actor=${encodeURIComponent(actor)}`);
+        const data = res.ok ? (await res.json()) as { sessions?: SessionRow[] } : { sessions: [] };
+        const target = data.sessions?.[0]?.slug ?? `conv-broker-${actor}`;
+        setActiveSlug(target);
+        await loadMessages(target);
+      } catch {
+        const fallback = `conv-broker-${actor}`;
+        setActiveSlug(fallback);
+        await loadMessages(fallback);
+      }
     })();
-  }, [actor, activeKey, refreshSessions, loadMessages]);
+  }, [actor, activeKey, loadMessages]);
 
   // Persist active selection.
   useEffect(() => {
@@ -295,22 +297,6 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [turns]);
-
-  // Close session row menu on outside click.
-  useEffect(() => {
-    if (!menuOpenSlug) return;
-    const onClick = () => setMenuOpenSlug(null);
-    window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
-  }, [menuOpenSlug]);
-
-  // Mobile session menu — close on outside click.
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-    const onClick = () => setMobileMenuOpen(false);
-    window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
-  }, [mobileMenuOpen]);
 
   // Attach menu — close on outside click.
   useEffect(() => {
@@ -370,14 +356,8 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
     } catch { /* clipboard denied or no image */ }
   }, [addImage]);
 
-  const switchSession = useCallback(async (slug: string) => {
-    if (slug === activeSlug || streaming) return;
-    setActiveSlug(slug);
-    await loadMessages(slug);
-  }, [activeSlug, streaming, loadMessages]);
-
   const newSession = useCallback(async () => {
-    if (!actor) return;
+    if (!actor || streaming) return;
     try {
       const res = await fetch("/api/broker/sessions", {
         method: "POST",
@@ -387,64 +367,11 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
       if (!res.ok) return;
       const data = (await res.json()) as { slug?: string };
       if (!data.slug) return;
-      await refreshSessions();
       setActiveSlug(data.slug);
       setTurns([]);
       requestAnimationFrame(() => taRef.current?.focus());
     } catch { /* ignore */ }
-  }, [actor, refreshSessions]);
-
-  const forkSession = useCallback(async (sourceSlug: string) => {
-    if (!actor) return;
-    setMenuOpenSlug(null);
-    try {
-      const res = await fetch("/api/broker/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor, action: "fork", source_slug: sourceSlug }),
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as { slug?: string };
-      await refreshSessions();
-      if (data.slug) {
-        setActiveSlug(data.slug);
-        await loadMessages(data.slug);
-      }
-    } catch { /* ignore */ }
-  }, [actor, refreshSessions, loadMessages]);
-
-  const archiveSession = useCallback(async (targetSlug: string) => {
-    if (!actor) return;
-    setMenuOpenSlug(null);
-    try {
-      await fetch("/api/broker/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor, action: "archive", target_slug: targetSlug }),
-      });
-      const list = await refreshSessions();
-      if (targetSlug === activeSlug) {
-        const next = list[0]?.slug ?? `conv-broker-${actor}`;
-        setActiveSlug(next);
-        await loadMessages(next);
-      }
-    } catch { /* ignore */ }
-  }, [actor, activeSlug, refreshSessions, loadMessages]);
-
-  const commitRename = useCallback(async () => {
-    const slug = renamingSlug;
-    const title = renameDraft.trim();
-    setRenamingSlug(null);
-    if (!actor || !slug || !title) return;
-    try {
-      await fetch("/api/broker/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor, action: "rename", target_slug: slug, new_title: title }),
-      });
-      await refreshSessions();
-    } catch { /* ignore */ }
-  }, [actor, renamingSlug, renameDraft, refreshSessions]);
+  }, [actor, streaming]);
 
   const send = useCallback(async () => {
     const hasContent = draft.trim() || attachments.length > 0;
@@ -637,7 +564,6 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
     [send]
   );
 
-  const sidebarWidth = sidebarCollapsed ? 32 : 144;
 
   // Chat is open or closed — deliberately, persisted per actor (Randy 2026-05-10).
   // No focus-or-content magic. Aliased to "expanded" to keep downstream JSX small.
@@ -708,313 +634,24 @@ export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: C
       className="flex flex-col h-full transition-all duration-200 ease-out"
       style={{ background: CHAT_BG, color: INK, fontFamily: FONT_SANS }}
     >
-      {/* Header — title only. Sizing icons are in the floating strip (bottom-right). */}
+      {/* Header — "new chat" button lives here now that sidebar is gone */}
       <div
         className="shrink-0 flex items-center justify-between px-3 py-1.5 border-b"
         style={{ borderColor: `${RULE}80`, background: CHAT_BG }}
       >
-        <div className="flex items-center gap-2">
-          {mobile && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMobileMenuOpen((v) => !v);
-              }}
-              aria-label="Sessions menu"
-              title="Sessions"
-              className="w-6 h-6 flex items-center justify-center text-[14px] leading-none"
-              style={{ color: ORANGE }}
-            >
-              ☰
-            </button>
-          )}
-          <span className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: mobile ? "#3a342a" : "#6b6450" }}>
-            chat
-          </span>
-        </div>
-        {/* Sizing icons live in the persistent floating strip (bottom-right),
-            not in the header — see sizeStrip above. */}
+        <span className="text-[11px] font-semibold uppercase tracking-[0.04em]" style={{ color: "#6b6450" }}>chat</span>
+        <button
+          onClick={() => void newSession()}
+          disabled={streaming}
+          title="new chat"
+          className="text-[10px] uppercase tracking-wider px-2 py-0.5 border transition-colors disabled:opacity-40"
+          style={{ borderColor: `${RULE}99`, color: "#6b6450", background: "transparent", fontFamily: FONT_SANS }}
+        >+ new</button>
       </div>
 
-      {/* Body — sidebar (sessions) + main column (thread/input/controls) */}
+      {/* Body — full-width thread + input + controls (no sidebar) */}
       <div className="flex flex-1 min-h-0">
-      {/* Sidebar — sessions. v2 (Randy 2026-05-10): cream surface, orange
-          foreground accents. Right-edge orange separator for the divide.
-          On mobile, this inline sidebar is hidden — replaced by hamburger overlay. */}
-      {expanded && !mobile && (
-      <div
-        className="shrink-0 flex flex-col h-full transition-all"
-        style={{
-          width: sidebarWidth,
-          background: CREAM,
-          color: ORANGE,
-          borderRight: `1px solid ${ORANGE}`,
-        }}
-      >
-        <div className="shrink-0 flex items-center justify-between px-1.5 py-1.5 gap-1">
-          <button
-            onClick={newSession}
-            title="new chat"
-            className="w-6 h-6 flex items-center justify-center border text-[14px] leading-none transition-colors"
-            style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
-          >
-            +
-          </button>
-          {!sidebarCollapsed && (
-            <button
-              onClick={() => setSidebarCollapsed(true)}
-              title="collapse sidebar"
-              className="w-6 h-6 flex items-center justify-center text-[12px] leading-none opacity-80 hover:opacity-100"
-              style={{ color: ORANGE }}
-            >
-              ↤
-            </button>
-          )}
-          {sidebarCollapsed && sessions.length > 0 && (
-            <span
-              className="font-mono text-[11px] px-1 py-0.5 rounded border"
-              style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
-              title={`${sessions.length} sessions`}
-            >
-              {sessions.length}
-            </span>
-          )}
-        </div>
-        {sidebarCollapsed && (
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            title="expand sidebar"
-            className="mx-auto mt-1 w-6 h-6 flex items-center justify-center text-[12px] leading-none opacity-80 hover:opacity-100"
-            style={{ color: ORANGE }}
-          >
-            ↦
-          </button>
-        )}
-        {!sidebarCollapsed && (
-          <div className="flex-1 min-h-0 overflow-auto px-1.5 pb-2 space-y-0.5">
-            {sessions.length === 0 && (
-              <div
-                className="text-[10px] italic opacity-70 px-1 py-2"
-                style={{ color: "#6b6450", fontFamily: FONT_SANS }}
-              >
-                no sessions yet
-              </div>
-            )}
-            {sessions.map((s) => {
-              const isActive = s.slug === activeSlug;
-              const isRenaming = renamingSlug === s.slug;
-              const truncated = s.title.length > 20 ? `${s.title.slice(0, 19)}…` : s.title;
-              return (
-                <div
-                  key={s.slug}
-                  className="group relative"
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setMenuOpenSlug(s.slug);
-                  }}
-                >
-                  {isRenaming ? (
-                    <input
-                      autoFocus
-                      value={renameDraft}
-                      onChange={(e) => setRenameDraft(e.target.value)}
-                      onBlur={() => void commitRename()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") { e.preventDefault(); void commitRename(); }
-                        if (e.key === "Escape") { setRenamingSlug(null); }
-                      }}
-                      className="w-full text-[11px] px-1.5 py-1 border bg-white/95 outline-none"
-                      style={{ color: INK, borderColor: ORANGE, fontFamily: FONT_SANS }}
-                    />
-                  ) : (
-                    <button
-                      onClick={() => void switchSession(s.slug)}
-                      className="w-full text-left text-[11px] px-1.5 py-1 transition-colors flex items-center gap-1"
-                      style={{
-                        background: isActive ? ORANGE : "transparent",
-                        color: isActive ? CREAM : INK,
-                        fontFamily: FONT_SANS,
-                      }}
-                      title={s.title}
-                    >
-                      <span className="flex-1 truncate">{truncated}</span>
-                      <span
-                        className="opacity-0 group-hover:opacity-80 hover:opacity-100 text-[10px] leading-none"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRenameDraft(s.title);
-                          setRenamingSlug(s.slug);
-                        }}
-                        title="rename"
-                      >
-                        ✎
-                      </span>
-                      <span
-                        className="opacity-0 group-hover:opacity-80 hover:opacity-100 text-[12px] leading-none"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenSlug(menuOpenSlug === s.slug ? null : s.slug);
-                        }}
-                        title="more"
-                      >
-                        ⋯
-                      </span>
-                    </button>
-                  )}
-                  {menuOpenSlug === s.slug && (
-                    <div
-                      className="absolute right-0 top-full z-20 mt-0.5 border shadow-lg"
-                      style={{ background: CREAM, borderColor: ORANGE, color: INK, fontFamily: FONT_SANS }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => void forkSession(s.slug)}
-                        className="block w-full text-left text-[11px] px-2 py-1 hover:bg-black/5 whitespace-nowrap"
-                      >
-                        fork from here
-                      </button>
-                      <button
-                        onClick={() => void archiveSession(s.slug)}
-                        className="block w-full text-left text-[11px] px-2 py-1 hover:bg-black/5 whitespace-nowrap"
-                      >
-                        archive
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      )}
-
-      {/* Mobile session menu overlay — opens from hamburger. Reuses session list JSX. */}
-      {mobile && mobileMenuOpen && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "fixed",
-            top: 44,
-            left: 8,
-            width: 240,
-            maxHeight: "60vh",
-            overflowY: "auto",
-            background: CREAM,
-            border: `1px solid ${ORANGE}`,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
-            zIndex: 60,
-            fontFamily: FONT_SANS,
-          }}
-        >
-          <div className="flex items-center justify-between px-2 py-1.5 border-b" style={{ borderColor: `${ORANGE}66` }}>
-            <button
-              onClick={() => { void newSession(); setMobileMenuOpen(false); }}
-              className="text-[11px] uppercase tracking-wider px-2 py-1 border"
-              style={{ borderColor: ORANGE, color: ORANGE, background: "transparent" }}
-            >
-              + new chat
-            </button>
-            <span className="font-mono text-[10px]" style={{ color: ORANGE }}>
-              {sessions.length}
-            </span>
-          </div>
-          <div className="px-1.5 py-1 space-y-0.5">
-            {sessions.length === 0 && (
-              <div className="text-[11px] italic px-1 py-2" style={{ color: "#3a342a" }}>
-                no sessions yet
-              </div>
-            )}
-            {sessions.map((s) => {
-              const isActive = s.slug === activeSlug;
-              const isRenaming = renamingSlug === s.slug;
-              const truncated = s.title.length > 28 ? `${s.title.slice(0, 27)}…` : s.title;
-              return (
-                <div
-                  key={s.slug}
-                  className="group relative"
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setMenuOpenSlug(s.slug);
-                  }}
-                >
-                  {isRenaming ? (
-                    <input
-                      autoFocus
-                      value={renameDraft}
-                      onChange={(e) => setRenameDraft(e.target.value)}
-                      onBlur={() => void commitRename()}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") { e.preventDefault(); void commitRename(); }
-                        if (e.key === "Escape") { setRenamingSlug(null); }
-                      }}
-                      className="w-full text-[12px] px-1.5 py-1 border bg-white/95 outline-none"
-                      style={{ color: INK, borderColor: ORANGE, fontFamily: FONT_SANS }}
-                    />
-                  ) : (
-                    <button
-                      onClick={() => { void switchSession(s.slug); setMobileMenuOpen(false); }}
-                      className="w-full text-left text-[12px] px-2 py-1.5 transition-colors flex items-center gap-1"
-                      style={{
-                        background: isActive ? ORANGE : "transparent",
-                        color: isActive ? CREAM : INK,
-                        fontFamily: FONT_SANS,
-                      }}
-                      title={s.title}
-                    >
-                      <span className="flex-1 truncate">{truncated}</span>
-                      <span
-                        className="text-[11px] leading-none opacity-70"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRenameDraft(s.title);
-                          setRenamingSlug(s.slug);
-                        }}
-                        title="rename"
-                      >
-                        ✎
-                      </span>
-                      <span
-                        className="text-[12px] leading-none opacity-70"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenSlug(menuOpenSlug === s.slug ? null : s.slug);
-                        }}
-                        title="more"
-                      >
-                        ⋯
-                      </span>
-                    </button>
-                  )}
-                  {menuOpenSlug === s.slug && (
-                    <div
-                      className="absolute right-0 top-full z-30 mt-0.5 border shadow-lg"
-                      style={{ background: CREAM, borderColor: ORANGE, color: INK, fontFamily: FONT_SANS }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => void forkSession(s.slug)}
-                        className="block w-full text-left text-[11px] px-2 py-1 hover:bg-black/5 whitespace-nowrap"
-                      >
-                        fork from here
-                      </button>
-                      <button
-                        onClick={() => void archiveSession(s.slug)}
-                        className="block w-full text-left text-[11px] px-2 py-1 hover:bg-black/5 whitespace-nowrap"
-                      >
-                        archive
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Right column — thread + input + controls */}
+      {/* Single column — thread + input + controls */}
       <div className="flex-1 min-w-0 flex flex-col h-full">
         {/* Thread — hidden when recessed (no turns, not focused) */}
         {expanded && (
