@@ -114,13 +114,32 @@ function readDevMode(): boolean {
   return new URLSearchParams(window.location.search).get("dev") === "1";
 }
 
+interface AgentOption { slug: string; label: string; }
+
+interface Attachment {
+  id: string;
+  type: "file" | "image";
+  name: string;
+  content: string;      // text for files; base64 for images
+  mimeType?: string;
+  dataUrl?: string;     // image preview
+  analyzing?: boolean;
+  description?: string;
+}
+
 interface ChatPaneProps {
   /** Mobile mode: chat is always full-height, close button hidden,
    *  open/closed localStorage state ignored. */
   mobile?: boolean;
+  /** Agent mooring slug to use as system prompt. Defaults to DS onboard agent. */
+  agentSlug?: string;
+  /** Agent options to render in the controls strip selector. */
+  agents?: AgentOption[];
+  /** Called when user picks a different agent. */
+  onAgentChange?: (slug: string) => void;
 }
 
-export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
+export function ChatPane({ mobile = false, agentSlug, agents, onAgentChange }: ChatPaneProps = {}) {
   // SSR returns null; useEffect resolves on client. Tracking hydration in a
   // separate flag prevents disabled-attr hydration mismatch on the textarea.
   const [actor, setActor] = useState<string | null>(null);
@@ -175,6 +194,11 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const attachMenuRef = useRef<HTMLDivElement | null>(null);
 
   const sessionCost = useMemo(
     () => turns.reduce((acc, t) => acc + (t.meta?.cost ?? 0), 0),
@@ -288,6 +312,64 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
     return () => window.removeEventListener("click", onClick);
   }, [mobileMenuOpen]);
 
+  // Attach menu — close on outside click.
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAttachMenu]);
+
+  const addFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachments(prev => [...prev, { id: `f-${Date.now()}`, type: "file", name: file.name, content: reader.result as string }]);
+    };
+    reader.readAsText(file);
+  }, []);
+
+  const addImage = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1];
+      const mimeType = file.type || "image/jpeg";
+      const id = `i-${Date.now()}`;
+      setAttachments(prev => [...prev, { id, type: "image", name: file.name, content: base64, mimeType, dataUrl, analyzing: true }]);
+      try {
+        const res = await fetch("/api/image-analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_data: base64, mime_type: mimeType }),
+        });
+        const json = await res.json() as { description?: string };
+        setAttachments(prev => prev.map(a => a.id === id ? { ...a, analyzing: false, description: json.description ?? "" } : a));
+      } catch {
+        setAttachments(prev => prev.map(a => a.id === id ? { ...a, analyzing: false, description: "[vision analysis failed]" } : a));
+      }
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const pasteImage = useCallback(async () => {
+    setShowAttachMenu(false);
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find(t => t.startsWith("image/"));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          addImage(new File([blob], `clipboard-${Date.now()}.png`, { type: imageType }));
+          return;
+        }
+      }
+    } catch { /* clipboard denied or no image */ }
+  }, [addImage]);
+
   const switchSession = useCallback(async (slug: string) => {
     if (slug === activeSlug || streaming) return;
     setActiveSlug(slug);
@@ -365,8 +447,23 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
   }, [actor, renamingSlug, renameDraft, refreshSessions]);
 
   const send = useCallback(async () => {
-    const text = draft.trim();
-    if (!text || streaming || !actor || !activeSlug) return;
+    const hasContent = draft.trim() || attachments.length > 0;
+    if (!hasContent || streaming || !actor || !activeSlug) return;
+    if (attachments.some(a => a.analyzing)) return;
+
+    // Build full message with attachments prepended
+    const parts: string[] = [];
+    for (const att of attachments) {
+      if (att.type === "image") {
+        parts.push(`[Image: ${att.name}]\n${att.description ?? "(no description)"}`);
+      } else {
+        parts.push(`[File: ${att.name}]\n\`\`\`\n${att.content}\n\`\`\``);
+      }
+    }
+    if (draft.trim()) parts.push(draft.trim());
+    const text = parts.join("\n\n");
+
+    setAttachments([]);
 
     const userTurn: ChatTurn = {
       id: `u-${Date.now()}`,
@@ -407,6 +504,7 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
           thinking: thinkingForThisTurn,
           messages: history,
           session_slug: activeSlug,
+          agent_slug: agentSlug,
         }),
       });
       if (!res.ok || !res.body) {
@@ -527,7 +625,7 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
       }
       requestAnimationFrame(() => taRef.current?.focus());
     }
-  }, [draft, streaming, actor, model, thinking, turns, activeSlug, refreshSessions]);
+  }, [draft, streaming, actor, model, thinking, turns, activeSlug, refreshSessions, attachments]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -595,8 +693,16 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
     return sizeStrip;
   }
 
+  const analyzingAttachment = attachments.some(a => a.analyzing);
+  const canSend = !streaming && !analyzingAttachment && (!!draft.trim() || attachments.length > 0) && !!actor;
+
   return (
     <>
+    {/* Hidden file pickers */}
+    <input ref={fileInputRef} type="file" style={{ display: "none" }}
+      onChange={e => { const f = e.target.files?.[0]; if (f) addFile(f); e.target.value = ""; setShowAttachMenu(false); }} />
+    <input ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
+      onChange={e => { const f = e.target.files?.[0]; if (f) addImage(f); e.target.value = ""; setShowAttachMenu(false); }} />
     {sizeStrip}
     <div
       className="flex flex-col h-full transition-all duration-200 ease-out"
@@ -941,56 +1047,116 @@ export function ChatPane({ mobile = false }: ChatPaneProps = {}) {
 
         {/* Send box — always visible. Top rule reads as a recessed band when collapsed. */}
         <div
-          className="shrink-0 border-t px-3 py-2 flex gap-2 items-end"
+          className="shrink-0 border-t px-3 py-2 flex flex-col gap-1.5"
           style={{ borderColor: `${RULE}80` }}
         >
-          <textarea
-            ref={taRef}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={streaming ? "streaming…" : (expanded ? "message — Enter to send · Shift+Enter newline" : "Ask…")}
-            /* Mobile keyboard fix: never disable on mobile (iOS/Android won't
-               open the keyboard if the textarea was rendered disabled at any
-               point during hydration). Only block sending in send() if
-               !hydrated || !actor. */
-            disabled={mobile ? streaming : (!hydrated || streaming || !actor)}
-            inputMode="text"
-            autoCapitalize="sentences"
-            autoCorrect="on"
-            rows={expanded ? 2 : 1}
-            className={`flex-1 resize-none bg-transparent border-0 px-2 py-1.5 text-[13px] leading-relaxed focus:outline-none${mobile ? " chat-ta-mobile" : ""}`}
-            style={{
-              color: INK,
-              minHeight: expanded ? 40 : 28,
-              maxHeight: 160,
-              fontFamily: FONT_SANS,
-            }}
-          />
-          {mobile && (
-            <style dangerouslySetInnerHTML={{ __html: ".chat-ta-mobile::placeholder { color: #3a342a; opacity: 0.85; }" }} />
+          {/* Attachment chips */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {attachments.map(att => (
+                <div key={att.id} className="flex items-center gap-1 px-1.5 py-0.5 border rounded text-[11px]"
+                  style={{ borderColor: RULE, fontFamily: "var(--font-mono, monospace)", color: INK, background: "rgba(0,0,0,0.04)", maxWidth: 200 }}>
+                  {att.type === "image" && att.dataUrl
+                    ? <img src={att.dataUrl} alt={att.name} style={{ width: 18, height: 18, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} />
+                    : <span>{att.type === "image" ? "🖼" : "📎"}</span>
+                  }
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>
+                    {att.analyzing ? `${att.name} (analyzing…)` : att.name}
+                  </span>
+                  <button onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
+                    style={{ background: "transparent", border: "none", cursor: "pointer", color: "#6b6450", padding: 0, fontSize: 13, lineHeight: 1, flexShrink: 0 }}>×</button>
+                </div>
+              ))}
+            </div>
           )}
-          <button
-            onClick={() => void send()}
-            disabled={streaming || !draft.trim() || !actor}
-            className="font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 border transition-colors disabled:opacity-40"
-            style={
-              streaming || !draft.trim()
-                ? { borderColor: `${RULE}99`, color: "#6b6450", background: "transparent" }
-                : { borderColor: ORANGE, color: CREAM, background: ORANGE }
-            }
-          >
-            {streaming ? "…" : "send"}
-          </button>
+
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={taRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={streaming ? "streaming…" : (expanded ? "message — Enter to send · Shift+Enter newline" : "Ask…")}
+              disabled={mobile ? streaming : (!hydrated || streaming || !actor)}
+              inputMode="text"
+              autoCapitalize="sentences"
+              autoCorrect="on"
+              rows={expanded ? 2 : 1}
+              className={`flex-1 resize-none bg-transparent border-0 px-2 py-1.5 text-[13px] leading-relaxed focus:outline-none${mobile ? " chat-ta-mobile" : ""}`}
+              style={{
+                color: INK,
+                minHeight: expanded ? 40 : 28,
+                maxHeight: 160,
+                fontFamily: FONT_SANS,
+              }}
+            />
+            {mobile && (
+              <style dangerouslySetInnerHTML={{ __html: ".chat-ta-mobile::placeholder { color: #3a342a; opacity: 0.85; }" }} />
+            )}
+            <button
+              onClick={() => void send()}
+              disabled={!canSend}
+              className="font-mono text-[10px] uppercase tracking-wider px-3 py-1.5 border transition-colors disabled:opacity-40"
+              style={
+                canSend
+                  ? { borderColor: ORANGE, color: CREAM, background: ORANGE }
+                  : { borderColor: `${RULE}99`, color: "#6b6450", background: "transparent" }
+              }
+            >
+              {streaming ? "…" : analyzingAttachment ? "analyzing…" : "send"}
+            </button>
+          </div>
         </div>
 
-        {/* Controls strip — BELOW input. Operator-only chrome (model picker,
-            thinking toggle, ctx tokens, session cost). Hidden in user mode. */}
+        {/* Controls strip — agent selector, model picker, thinking toggle, ctx, cost. */}
         {expanded && (
         <div
-          className="shrink-0 flex items-center gap-3 px-3 h-7 border-t font-mono text-[10px]"
+          className="shrink-0 flex items-center gap-2 px-3 h-7 border-t font-mono text-[10px]"
           style={{ borderColor: `${RULE}80`, background: CREAM }}
         >
+          {/* + attach button */}
+          <div ref={attachMenuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowAttachMenu(v => !v)}
+              title="Attach file or image"
+              className="w-5 h-5 flex items-center justify-center border text-[13px] font-light leading-none transition-colors"
+              style={{
+                borderColor: showAttachMenu ? ORANGE : `${RULE}99`,
+                background: showAttachMenu ? ORANGE : "transparent",
+                color: showAttachMenu ? CREAM : "#6b6450",
+              }}
+            >+</button>
+            {showAttachMenu && (
+              <div className="absolute bottom-full left-0 mb-1 border shadow-lg z-50"
+                style={{ background: CREAM, borderColor: RULE, minWidth: 148 }}>
+                {[
+                  { label: "📎  Add file",    action: () => fileInputRef.current?.click() },
+                  { label: "🖼  Add image",   action: () => imageInputRef.current?.click() },
+                  { label: "📋  Paste image", action: () => void pasteImage() },
+                ].map(item => (
+                  <button key={item.label} onClick={item.action}
+                    className="block w-full text-left text-[11px] px-3 py-1.5 hover:bg-black/5 whitespace-nowrap"
+                    style={{ fontFamily: FONT_SANS, color: INK }}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {agents && agents.length > 0 && onAgentChange && <div className="w-px h-4 shrink-0" style={{ background: `${RULE}80` }} />}
+          {agents && agents.length > 0 && onAgentChange && agents.map(ag => {
+            const active = agentSlug === ag.slug;
+            return (
+              <button key={ag.slug} onClick={() => onAgentChange(ag.slug)} disabled={streaming}
+                className="border px-2 py-0.5 text-[10px] uppercase tracking-wider transition-colors"
+                style={active
+                  ? { background: ORANGE, color: CREAM, borderColor: ORANGE, fontFamily: "inherit" }
+                  : { background: "transparent", color: INK, borderColor: `${RULE}99`, fontFamily: "inherit" }}>
+                {ag.label}
+              </button>
+            );
+          })}
+          {agents && agents.length > 0 && onAgentChange && <div className="w-px h-4 shrink-0" style={{ background: `${RULE}80` }} />}
           <select
             value={model}
             onChange={e => setModel(e.target.value as DeepseekModelId)}
